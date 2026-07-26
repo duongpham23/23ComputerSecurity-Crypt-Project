@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MINI VAULT - Monogatari UI</title>
+    <!-- Import Fonts: Shippori Mincho for Narrative/Flash, Noto Sans JP for UI -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;900&family=Shippori+Mincho:wght@400;500;700&display=swap" rel="stylesheet">
+
+    <style>
+        /* --- DESIGN SYSTEM TOKENS --- */
+        :root {
+            /* Colors */
+            --primary-black: #000000;
+            --primary-red: #CC0000;
+            --primary-white: #F8F8F8;
+            --paper-texture: #F4F1EA;
+            --blueprint-blue: #003366;
+            --caution-yellow: #FFCC00;
+            --accent-shinobu: #FFD700;
+            --text-inverse: #FFFFFF;
+            --text-main: #111111;
+            --text-subdued: #666666;
+
+            /* Spacing (Ma) */
+            --spacing-micro: 2px;
+            --spacing-xs: 4px;
+            --spacing-sm: 8px;
+            --spacing-md: 16px;
+            --spacing-lg: 32px;
+            --spacing-xl: 64px;
+            --spacing-cinematic: 128px;
+            --spacing-void: 256px;
+        }
+
+        /* --- GLOBAL RESET & BASE --- */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            border-radius: 0 !important; /* Zero border radius rule */
+            transition: none !important; /* Hard Cuts over Easing */
+        }
+
+        body {
+            background-color: var(--primary-black);
+            color: var(--primary-white);
+            font-family: 'Noto Sans JP', sans-serif;
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* --- TYPOGRAPHY UTILITIES --- */
+        .flash-screen-xxl {
+            font-family: 'Shippori Mincho', serif;
+            font-size: 72px;
+            font-weight: 700;
+            line-height: 1.0;
+            letter-spacing: 2.0px;
+            text-transform: uppercase;
+        }
+
+        .flash-screen-xl {
+            font-family: 'Shippori Mincho', serif;
+            font-size: 56px;
+            font-weight: 700;
+            line-height: 1.1;
+            letter-spacing: 1.5px;
+        }
+
+        .display-serif {
+            font-family: 'Shippori Mincho', serif;
+            font-size: 32px;
+            font-weight: 500;
+            line-height: 1.4;
+            letter-spacing: 1.0px;
+        }
+
+        .body-gothic {
+            font-family: 'Noto Sans JP', sans-serif;
+            font-size: 16px;
+            font-weight: 400;
+            line-height: 1.6;
+            letter-spacing: 0.5px;
+        }
+
+        /* --- COMPONENTS --- */
+        .cinematic-letterbox {
+            position: fixed;
+            top: 0;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            border-top: 64px solid var(--primary-black);
+            border-bottom: 64px solid var(--primary-black);
+            pointer-events: none;
+            z-index: 100;
+        }
+
+        .dialogue-bar {
+            position: fixed;
+            bottom: 64px;
+            left: 0;
+            right: 0;
+            background-color: var(--primary-black);
+            color: var(--text-inverse);
+            padding: 16px 32px;
+            border-left: 8px solid var(--primary-red);
+            font-family: 'Noto Sans JP', sans-serif;
+            font-size: 16px;
+            z-index: 90;
+        }
+
+        /* Flash Screens Container */
+        #flash-screen-container {
+            position: fixed;
+            inset: 0;
+            z-index: 9999;
+            display: none; /* Hidden by default */
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 64px;
+        }
+
+        .flash-card-black {
+            background-color: var(--primary-black);
+            color: var(--text-inverse);
+        }
+
+        .flash-card-red {
+            background-color: var(--primary-red);
+            color: var(--primary-black);
+        }
+
+        /* --- LAYOUT & FORMS --- */
+        .main-canvas {
+            flex: 1;
+            background-color: var(--paper-texture);
+            color: var(--text-main);
+            margin: 64px 0; /* Respect letterbox */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            /* Blueprint grid illusion */
+            background-image: linear-gradient(var(--blueprint-blue) 1px, transparent 1px),
+                              linear-gradient(90deg, var(--blueprint-blue) 1px, transparent 1px);
+            background-size: 64px 64px;
+            background-position: center;
+        }
+
+        .form-container {
+            background-color: var(--primary-black);
+            padding: var(--spacing-xl);
+            width: 500px;
+            max-width: 90%;
+            /* Hard offset shadow */
+            box-shadow: 16px 16px 0px 0px var(--primary-red);
+            position: relative;
+            z-index: 10;
+        }
+
+        .form-group {
+            margin-bottom: var(--spacing-lg);
+            display: flex;
+            flex-direction: column;
+            gap: var(--spacing-sm);
+        }
+
+        label {
+            font-family: 'Shippori Mincho', serif;
+            font-size: 14px;
+            color: var(--text-subdued);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        input {
+            background-color: transparent;
+            border: 2px solid var(--text-subdued);
+            color: var(--primary-white);
+            padding: var(--spacing-md);
+            font-family: 'Noto Sans JP', sans-serif;
+            font-size: 16px;
+            outline: none;
+        }
+
+        input:focus {
+            border-color: var(--primary-red);
+            background-color: rgba(204, 0, 0, 0.1);
+        }
+
+        .btn {
+            background-color: var(--primary-white);
+            color: var(--primary-black);
+            font-family: 'Noto Sans JP', sans-serif;
+            font-weight: 900;
+            font-size: 18px;
+            padding: var(--spacing-md) var(--spacing-lg);
+            border: none;
+            cursor: pointer;
+            text-transform: uppercase;
+            width: 100%;
+            margin-top: var(--spacing-md);
+        }
+
+        .btn-red {
+            background-color: var(--primary-red);
+            color: var(--primary-black);
+        }
+
+        .btn:hover, .btn:active {
+            background-color: var(--caution-yellow);
+        }
+
+        .btn-link {
+            background: transparent;
+            color: var(--text-subdued);
+            font-family: 'Noto Sans JP', sans-serif;
+            font-size: 14px;
+            border: none;
+            cursor: pointer;
+            text-decoration: underline;
+            margin-top: var(--spacing-md);
+            padding: 0;
+            width: auto;
+        }
+
+        .btn-link:hover {
+            color: var(--primary-white);
+            background: transparent;
+        }
+
+        /* Screen toggling */
+        .screen { display: none; }
+        .screen.active { display: block; }
+
+    </style>
+</head>
+<body>
+
+    <!-- Cinematic Letterbox (Top and Bottom black bars) -->
+    <div class="cinematic-letterbox"></div>
+
+    <!-- Flash Screen (Micro-interaction takeover) -->
+    <div id="flash-screen-container" class="flash-card-black">
+        <div id="flash-screen-text" class="flash-screen-xxl">LOADING...</div>
+    </div>
+
+    <!-- Main Content Canvas (Grid Environment) -->
+    <div class="main-canvas">
+
+        <!-- SCREEN 0.1: INIT / UNLOCK VAULT -->
+        <div id="screen-unlock" class="form-container screen active">
+            <h1 class="display-serif" style="margin-bottom: var(--spacing-xl); color: var(--primary-white);">
+                STATE: <span style="color: var(--primary-red);">LOCKED</span>
+            </h1>
+
+            <div class="form-group">
+                <label>Master Passphrase</label>
+                <input type="password" id="master-passphrase" placeholder="ENTER TO DECRYPT DEK">
+            </div>
+
+            <button class="btn btn-red" onclick="handleUnlock()">UNLOCK VAULT</button>
+        </div>
+
+        <!-- SCREEN 0.2: LOGIN -->
+        <div id="screen-login" class="form-container screen">
+            <h1 class="display-serif" style="margin-bottom: var(--spacing-xl); color: var(--primary-white);">
+                IDENTIFICATION
+            </h1>
+
+            <div class="form-group">
+                <label>Email / Operator ID</label>
+                <input type="email" id="login-email" placeholder="alice@example.com">
+            </div>
+
+            <div class="form-group">
+                <label>Passphrase</label>
+                <input type="password" id="login-password" placeholder="••••••••">
+            </div>
+
+            <button class="btn" onclick="handleLogin()">AUTHENTICATE</button>
+            <button class="btn-link" onclick="switchScreen('screen-register')">NEW OPERATOR? REGISTER HERE</button>
+        </div>
+
+        <!-- SCREEN 0.2: REGISTER -->
+        <div id="screen-register" class="form-container screen">
+            <h1 class="display-serif" style="margin-bottom: var(--spacing-lg); color: var(--primary-white);">
+                REGISTRATION
+            </h1>
+
+            <div class="form-group">
+                <label>Email</label>
+                <input type="email" id="reg-email" placeholder="alice@example.com">
+            </div>
+
+            <div class="form-group">
+                <label>Passphrase</label>
+                <input type="password" id="reg-password" placeholder="••••••••">
+            </div>
+
+            <div class="form-group">
+                <label>Confirm Passphrase</label>
+                <input type="password" id="reg-confirm" placeholder="••••••••">
+            </div>
+
+            <button class="btn btn-red" onclick="handleRegister()">INITIALIZE CREDENTIALS</button>
+            <button class="btn-link" onclick="switchScreen('screen-login')">RETURN TO LOGIN</button>
+        </div>
+
+    </div>
+
+    <!-- Dialogue Bar (System Monologue/Subtitles) -->
+    <div class="dialogue-bar" id="system-dialogue" style="border-left-color: var(--primary-red);">
+        SYSTEM INITIATED. VAULT REQUIRES MASTER PASSPHRASE.
+    </div>
+
+    <script>
+        // --- MOTION & FLASH BEHAVIOR ---
+        // Minimum dwell time for accessibility & jarring effect (1500ms)
+        const MINIMUM_DWELL_TIME = 1500;
+
+        function triggerFlashScreen(text, type = 'black', callback = null) {
+            const container = document.getElementById('flash-screen-container');
+            const textEl = document.getElementById('flash-screen-text');
+
+            // Hard cut configuration
+            container.className = type === 'red' ? 'flash-card-red' : 'flash-card-black';
+            textEl.className = type === 'red' ? 'flash-screen-xl' : 'flash-screen-xxl';
+            textEl.innerText = text;
+
+            // Snap display on
+            container.style.display = 'flex';
+
+            // Sustained Blink Cut
+            setTimeout(() => {
+                container.style.display = 'none';
+                if(callback) callback();
+            }, MINIMUM_DWELL_TIME);
+        }
+
+        function updateDialogue(text, color = 'var(--primary-red)') {
+            const dialogue = document.getElementById('system-dialogue');
+            dialogue.innerText = text;
+            dialogue.style.borderLeftColor = color;
+        }
+
+        function switchScreen(screenId) {
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+            document.getElementById(screenId).classList.add('active');
+        }
+
+        // --- BUSINESS LOGIC SIMULATION ---
+
+        // 0.1 Vault Unlock
+        function handleUnlock() {
+            const pass = document.getElementById('master-passphrase').value;
+            if (pass === "") {
+                // Wrong passphrase -> Red Flash Error
+                triggerFlashScreen("DECRYPTION FAILED", "red", () => {
+                    updateDialogue("ERROR: DEK DECRYPTION FAILED. TAG MISMATCH.", "var(--primary-red)");
+                });
+                return;
+            }
+
+            // Correct simulation -> Black Flash Transition
+            triggerFlashScreen("UNLOCKED", "black", () => {
+                switchScreen('screen-login');
+                updateDialogue("VAULT UNLOCKED. AWAITING OPERATOR IDENTIFICATION.", "var(--accent-shinobu)");
+                document.getElementById('master-passphrase').value = ''; // clear input
+            });
+        }
+
+        // 0.2 User Login
+        function handleLogin() {
+            const email = document.getElementById('login-email').value;
+            const pass = document.getElementById('login-password').value;
+
+            if (email === "" || pass === "") {
+                triggerFlashScreen("UNAUTHENTICATED", "red", () => {
+                    updateDialogue("ERROR: ACCOUNT NOT FOUND OR INCORRECT PASSPHRASE.", "var(--primary-red)");
+                });
+                return;
+            }
+
+            triggerFlashScreen("ACCESS GRANTED", "black", () => {
+                updateDialogue(`SESSION ACTIVE: ${email.toUpperCase()}`, "var(--primary-white)");
+                // In a full app, this would route to the KV / Transit UI
+                alert("Navigating to KV / Transit Engine Module...");
+            });
+        }
+
+        // 0.2 User Register
+        function handleRegister() {
+            const email = document.getElementById('reg-email').value;
+            const pass = document.getElementById('reg-password').value;
+            const confirm = document.getElementById('reg-confirm').value;
+
+            if (pass !== confirm || pass === "") {
+                triggerFlashScreen("MISMATCH", "red", () => {
+                    updateDialogue("ERROR: PASSPHRASES DO NOT MATCH.", "var(--primary-red)");
+                });
+                return;
+            }
+
+            triggerFlashScreen("REGISTERED", "black", () => {
+                switchScreen('screen-login');
+                updateDialogue("CREDENTIALS HASHED. PLEASE AUTHENTICATE.", "var(--primary-white)");
+                document.getElementById('reg-email').value = '';
+                document.getElementById('reg-password').value = '';
+                document.getElementById('reg-confirm').value = '';
+            });
+        }
+    </script>
+</body>
+</html>

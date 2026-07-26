@@ -1,0 +1,58 @@
+# =============================================================================
+# Mini Vault — Frontend only
+#
+# Runs the Vite dev server with hot-module replacement.
+# Source files are mounted as a volume so changes reflect instantly
+# without rebuilding the image.
+#
+# Usage:
+#   docker compose up --build        # first run
+#   docker compose up                # subsequent runs (image already built)
+#
+# App:  http://localhost:5173
+#
+# API calls:
+#   Set VITE_API_BASE_URL to point at a running backend instance.
+#   Default assumes the backend individual compose is also running locally.
+# =============================================================================
+
+services:
+
+  frontend:
+    build:
+      context: .
+      dockerfile_inline: |
+        FROM node:22-alpine
+
+        WORKDIR /app
+
+        RUN corepack enable && corepack prepare pnpm@9 --activate
+
+        # Install dependencies from the package manifest.
+        # The actual source is mounted at runtime via volumes, so we only
+        # copy the manifests here to keep the image layer cacheable.
+        COPY package.json pnpm-workspace.yaml ./
+        RUN pnpm install --no-frozen-lockfile
+
+        EXPOSE 5173
+
+        # --host exposes the dev server on 0.0.0.0 so Docker port-mapping works.
+        CMD ["pnpm", "dev", "--host", "0.0.0.0", "--port", "5173"]
+
+    container_name: mini-vault-frontend-dev
+    restart: unless-stopped
+
+    ports:
+      - "${FRONTEND_PORT:-5173}:5173"
+
+    environment:
+      # Points the frontend at the backend. Change to your backend's address
+      # if it is running on a different host or port.
+      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8000/api/v1}
+
+    volumes:
+      # Mount the full source tree for hot-module replacement.
+      - .:/app
+      # Keep node_modules inside the container so the host OS doesn't interfere
+      # (important on Windows/macOS where filesystem performance differs).
+      - /app/node_modules
