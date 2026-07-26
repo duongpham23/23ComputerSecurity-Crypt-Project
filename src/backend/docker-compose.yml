@@ -1,0 +1,95 @@
+# =============================================================================
+# Mini Vault — Backend only
+#
+# Runs FastAPI with Uvicorn in --reload mode so the server restarts
+# automatically on source file changes.
+# Source files are mounted as a volume — no rebuild needed after edits.
+#
+# Usage:
+#   docker compose up --build        # first run
+#   docker compose up                # subsequent runs (image already built)
+#
+# API:  http://localhost:8000
+# Docs: http://localhost:8000/docs   (FastAPI auto-generated Swagger UI)
+#
+# Secret management:
+#   Copy ../.env.example → .env (next to this file) and fill in real values.
+#   The .env file is gitignored and must never be committed.
+# =============================================================================
+
+services:
+
+  backend:
+    build:
+      context: .
+      dockerfile_inline: |
+        FROM python:3.12-slim AS builder
+
+        WORKDIR /app
+
+        RUN apt-get update && apt-get install -y --no-install-recommends \
+                gcc \
+                libffi-dev \
+                libssl-dev \
+            && rm -rf /var/lib/apt/lists/*
+
+        RUN pip install --upgrade pip setuptools wheel
+
+        COPY requirements.txt ./
+        RUN mkdir -p /install && pip install --prefix=/install --no-cache-dir -r requirements.txt
+
+        FROM python:3.12-slim AS runtime
+
+        WORKDIR /app
+
+        COPY --from=builder /install /usr/local
+
+        EXPOSE 8000
+
+        # --reload watches for source changes and restarts Uvicorn automatically.
+        CMD ["python", "-m", "uvicorn", "main:app", \
+             "--host", "0.0.0.0", \
+             "--port", "8000", \
+             "--reload"]
+
+    container_name: mini-vault-backend-dev
+    restart: unless-stopped
+
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+
+    environment:
+      SECRET_KEY: ${SECRET_KEY:-change-me-before-production}
+      ALGORITHM: ${ALGORITHM:-HS256}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
+      # Allow requests from the frontend dev server.
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,http://localhost:3000}
+      DATABASE_URL: ${DATABASE_URL:-}
+      SUPABASE_URL: ${SUPABASE_URL:-}
+      SUPABASE_KEY: ${SUPABASE_KEY:-}
+
+    env_file:
+      - path: .env
+        required: false
+
+    volumes:
+      # Mount source for --reload to pick up changes without rebuilding.
+      - .:/app
+      # Persist on-disk vault data across container restarts.
+      - vault-data:/app/data
+
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request, sys; r = urllib.request.urlopen('http://localhost:8000/health',
+          timeout=4); sys.exit(0 if r.status == 200 else 1)"
+      interval: 15s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
+volumes:
+  vault-data:
+    driver: local

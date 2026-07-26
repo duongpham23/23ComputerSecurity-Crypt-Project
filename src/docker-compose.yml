@@ -1,0 +1,199 @@
+# =============================================================================
+# Mini Vault — Docker Compose
+#
+# Both service images are built from inline Dockerfiles (dockerfile_inline).
+# No separate Dockerfile files are required.
+#
+# Requires: Docker Desktop 4.24+ / Docker Engine 24+ (Compose v2.17+, BuildKit)
+#
+# Quick start:
+#   cp .env.example .env        # fill in SECRET_KEY at minimum
+#   docker compose up --build   # build images and start both services
+#
+# Services:
+#   frontend  → http://localhost:3000   (Nginx + React SPA)
+#   backend   → http://localhost:8000   (FastAPI, dev-only direct access)
+#
+# The frontend Nginx reverse-proxies /api/ → http://backend:8000/api/
+# so the browser talks to a single origin — no CORS configuration needed.
+#
+# Secret management:
+#   Copy .env.example → .env and fill in real values before first run.
+#   The .env file is gitignored and must never be committed.
+# =============================================================================
+
+services:
+
+  # ── Backend (FastAPI + Uvicorn) ─────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile_inline: |
+        # ── Stage 1: builder ──────────────────────────────────────────────────
+        # Compile C-extension packages (cryptography, bcrypt) and install all
+        # Python deps into an isolated prefix so stage 2 ships no build tools.
+        FROM python:3.12-slim AS builder
+
+        WORKDIR /app
+
+        RUN apt-get update && apt-get install -y --no-install-recommends \
+                gcc \
+                libffi-dev \
+                libssl-dev \
+            && rm -rf /var/lib/apt/lists/*
+
+        RUN pip install --upgrade pip setuptools wheel
+
+        # Copy requirements first — layer is cached until requirements.txt changes.
+        COPY requirements.txt ./
+        # mkdir -p ensures /install exists even when requirements.txt is empty,
+        # which prevents the COPY --from=builder step from failing.
+        RUN mkdir -p /install && pip install --prefix=/install --no-cache-dir -r requirements.txt
+
+        # ── Stage 2: runtime ─────────────────────────────────────────────────
+        # Lean image: no compiler, just the installed packages + app source.
+        FROM python:3.12-slim AS runtime
+
+        WORKDIR /app
+
+        COPY --from=builder /install /usr/local
+        COPY . .
+
+        # Default values — all overridden at runtime by the environment: block below.
+        ENV HOST=0.0.0.0
+        ENV PORT=8000
+        ENV SECRET_KEY=change-me-in-production
+        ENV ALGORITHM=HS256
+        ENV ACCESS_TOKEN_EXPIRE_MINUTES=30
+        ENV CORS_ORIGINS=http://localhost:3000,http://frontend:80
+        ENV DATABASE_URL=
+        ENV SUPABASE_URL=
+        ENV SUPABASE_KEY=
+
+        EXPOSE 8000
+
+        # --proxy-headers trusts X-Forwarded-* set by the Nginx frontend proxy.
+        CMD ["python", "-m", "uvicorn", "main:app", \
+             "--host", "0.0.0.0", \
+             "--port", "8000", \
+             "--proxy-headers", \
+             "--forwarded-allow-ips", "*"]
+
+    container_name: mini-vault-backend
+    restart: unless-stopped
+
+    # Port 8000 is exposed for direct API access during development.
+    # Comment out in production — API traffic should flow through the frontend proxy.
+    ports:
+      - "8000:8000"
+
+    environment:
+      SECRET_KEY: ${SECRET_KEY:-change-me-before-production}
+      ALGORITHM: ${ALGORITHM:-HS256}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://frontend:80}
+      DATABASE_URL: ${DATABASE_URL:-}
+      SUPABASE_URL: ${SUPABASE_URL:-}
+      SUPABASE_KEY: ${SUPABASE_KEY:-}
+
+    # Also load secrets from .env (gitignored). Won't fail if the file is absent.
+    env_file:
+      - path: .env
+        required: false
+
+    volumes:
+      - vault-data:/app/data
+
+    networks:
+      - vault-net
+
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request, sys; r = urllib.request.urlopen('http://localhost:8000/health',
+          timeout=4); sys.exit(0 if r.status == 200 else 1)"
+      interval: 15s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
+  # ── Frontend (Nginx + React SPA) ────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # Vite bakes this URL into the JS bundle at build time.
+        # "/api/v1" (relative) works because Nginx proxies /api/ to the backend.
+        # Override with a full URL only when frontend and backend are on different domains.
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api/v1}
+      dockerfile_inline: |
+        # ── Stage 1: builder ──────────────────────────────────────────────────
+        FROM node:22-alpine AS builder
+
+        WORKDIR /app
+
+        RUN corepack enable && corepack prepare pnpm@9 --activate
+
+        # Install dependencies before copying source so this layer is cached.
+        COPY package.json pnpm-workspace.yaml ./
+        RUN pnpm install --no-frozen-lockfile
+
+        COPY . .
+
+        # VITE_API_BASE_URL is injected at build time and baked into the bundle.
+        ARG VITE_API_BASE_URL=/api/v1
+        ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
+
+        RUN pnpm build
+
+        # ── Stage 2: runtime ─────────────────────────────────────────────────
+        # Serve the compiled bundle with Nginx.
+        # Nginx also reverse-proxies /api/ to the backend container.
+        FROM nginx:1.27-alpine AS runtime
+
+        # Write the Nginx config template.
+        # ${BACKEND_HOST} and ${BACKEND_PORT} are substituted at container start
+        # by envsubst; nginx variables like $uri and $host are protected inside
+        # single quotes and are left untouched by envsubst.
+        RUN rm /etc/nginx/conf.d/default.conf && printf 'server {\n    listen 80;\n    server_name _;\n\n    root /usr/share/nginx/html;\n    index index.html;\n\n    gzip on;\n    gzip_types text/plain text/css application/javascript application/json\n               application/x-javascript text/xml application/xml\n               application/xml+rss text/javascript;\n    gzip_min_length 1024;\n\n    location / {\n        try_files $uri $uri/ /index.html;\n    }\n\n    location /api/ {\n        proxy_pass http://${BACKEND_HOST}:${BACKEND_PORT}/api/;\n        proxy_http_version 1.1;\n        proxy_set_header Host              $host;\n        proxy_set_header X-Real-IP         $remote_addr;\n        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;\n        proxy_set_header X-Forwarded-Proto $scheme;\n        proxy_read_timeout 60s;\n    }\n\n    add_header X-Frame-Options        "DENY"          always;\n    add_header X-Content-Type-Options "nosniff"       always;\n    add_header Referrer-Policy        "strict-origin" always;\n}\n' > /etc/nginx/conf.d/default.conf.template
+
+        COPY --from=builder /app/dist /usr/share/nginx/html
+
+        # Default target for the proxy — matches the backend service name above.
+        ENV BACKEND_HOST=backend
+        ENV BACKEND_PORT=8000
+
+        # envsubst fills in ${BACKEND_HOST} and ${BACKEND_PORT} from the environment,
+        # leaving all nginx $variables untouched (they are listed explicitly).
+        CMD ["/bin/sh", "-c", "envsubst '${BACKEND_HOST} ${BACKEND_PORT}' < /etc/nginx/conf.d/default.conf.template > /etc/nginx/conf.d/default.conf && nginx -g 'daemon off;'"]
+
+        EXPOSE 80
+
+    container_name: mini-vault-frontend
+    restart: unless-stopped
+
+    ports:
+      - "${FRONTEND_PORT:-3000}:80"
+
+    environment:
+      BACKEND_HOST: backend
+      BACKEND_PORT: "8000"
+
+    networks:
+      - vault-net
+
+    depends_on:
+      backend:
+        condition: service_healthy
+
+# ── Named volumes ──────────────────────────────────────────────────────────────
+volumes:
+  vault-data:
+    driver: local
+
+# ── Networks ───────────────────────────────────────────────────────────────────
+networks:
+  vault-net:
+    driver: bridge
