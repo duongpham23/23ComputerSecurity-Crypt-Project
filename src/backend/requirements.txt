@@ -6,3 +6,5 @@ bcrypt
 python-dotenv
 pyotp
 setuptools>=83.0.0
+pytest
+httpx
