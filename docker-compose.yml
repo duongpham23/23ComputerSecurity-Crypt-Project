@@ -39,7 +39,7 @@ services:
       - "8000:8000"
     volumes:
       - ./src/backend:/app
-      - vault-data:/app/data
+      - ./data:/app/data
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request, sys; r = urllib.request.urlopen('http://localhost:8000/health', timeout=4); sys.exit(0 if r.status == 200 else 1)"]
       interval: 15s
@@ -76,6 +76,3 @@ services:
     depends_on:
       - backend
 
-volumes:
-  vault-data:
-    driver: local

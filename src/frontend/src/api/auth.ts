@@ -1,10 +1,10 @@
 /**
  * Auth API — vault lifecycle + user session management.
  *
- * Vault lifecycle:
  *   GET  /vault          → current status (initialized, locked)
  *   POST /vault/init     → first-run: set passphrase, generate DEK   [controller]
  *   POST /vault/unlock   → subsequent starts: derive DEK from passphrase [controller]
+ *   POST /vault/lock     → seal vault explicitly, unloads DEK [controller]
  *
  * User lifecycle:
  *   POST   /users                  → register (creates a User resource)   → 201
@@ -12,7 +12,7 @@
  *   DELETE /auth/sessions/current  → logout (destroys the current session) → 204
  */
 
-import { apiFetch, setToken, clearToken } from "./client";
+import { apiFetch, setToken, clearToken, setUserLocal } from "./client";
 
 // ---------------------------------------------------------------------------
 // Response types
@@ -88,6 +88,34 @@ export async function vaultUnlock(passphrase: string): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// Audit resource
+// ---------------------------------------------------------------------------
+
+export interface AuditEvent {
+  id: number;
+  action: string;
+  actor_email: string;
+  resource: string;
+  detail: any;
+  result: string;
+  timestamp: string;
+}
+
+export interface AuditListResponse {
+  events: AuditEvent[];
+  total: number;
+}
+
+/**
+ * GET /audit/events
+ *
+ * Fetches the 50 most recent audit logs. Protected by VaultLocked state.
+ */
+export async function listAuditEvents(): Promise<AuditListResponse> {
+  return apiFetch<AuditListResponse>("/audit/events", { skipAuth: true });
+}
+
+// ---------------------------------------------------------------------------
 // User resource
 // ---------------------------------------------------------------------------
 
@@ -130,6 +158,7 @@ export async function login(
     body: { email, passphrase },
   });
   setToken(data.token);
+  setUserLocal(data.user);
   return data;
 }
 

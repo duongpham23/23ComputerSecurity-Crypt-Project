@@ -5,9 +5,13 @@ Supports ED25519 and RSASSA_PKCS1_V1_5_SHA_256.
 The private signing key is NEVER returned through any API.
 
 Modeled after AWS KMS Sign / Verify APIs:
-  - message_type: RAW (system hashes with SHA-256) or DIGEST (client pre-hashed).
-  - verify() returns {key_name, signature_valid, signing_algorithm}, never raises
-    on bad signatures.
+  - message_type: RAW or DIGEST.
+  - ED25519 does NOT support DIGEST mode (Ed25519 handles hashing internally).
+    Passing DIGEST to an ED25519 key raises ValueError with a clear message (Fix 3).
+  - RSASSA_PKCS1_V1_5_SHA_256 supports both RAW (SHA-256 applied) and DIGEST (pre-hashed).
+  - verify() returns {key_name, signature_valid, signing_algorithm}; bad signatures
+    return signature_valid: false rather than raising. DIGEST-mode errors on ED25519
+    propagate as 400-style exceptions for consistency with sign() (Q2 answer).
 """
 
 import base64
@@ -36,7 +40,7 @@ from src.transit.keys import (
 MessageType = Literal["RAW", "DIGEST"]
 SigningAlgorithm = Literal["ED25519", "RSASSA_PKCS1_V1_5_SHA_256"]
 
-_SHA256_DIGEST_LEN = 32  # expected length for a pre-computed SHA-256 digest
+_SHA256_DIGEST_LEN = 32  # expected byte length for a pre-computed SHA-256 digest
 
 
 # ---------------------------------------------------------------------------
@@ -49,7 +53,7 @@ def _generate_key_pair(algorithm: SigningAlgorithm) -> tuple[bytes, bytes]:
     Generate an asymmetric key pair for the given algorithm.
 
     Returns:
-        (private_key_bytes, public_key_bytes) in DER format.
+        (private_key_bytes, public_key_bytes) in DER/Raw format.
     """
     if algorithm == "ED25519":
         private_key = Ed25519PrivateKey.generate()
@@ -82,39 +86,70 @@ def _generate_key_pair(algorithm: SigningAlgorithm) -> tuple[bytes, bytes]:
     return priv_bytes, pub_bytes
 
 
-def _prepare_digest(message_b64: str, message_type: MessageType) -> bytes:
+def _prepare_signing_input(
+    message_b64: str,
+    message_type: MessageType,
+    algorithm: SigningAlgorithm,
+) -> bytes:
     """
-    Prepare the digest from the message.
+    Return the bytes to pass into the signing/verification primitive.
 
-    RAW:    SHA-256 hash of the decoded message.
-    DIGEST: Use as-is after validating length.
+    ED25519:
+      - RAW:    return the raw decoded message bytes.
+                Ed25519 handles its own internal hashing (SHA-512); do NOT pre-hash.
+      - DIGEST: raises ValueError — Ed25519 has no pre-hash variant (Fix 3).
+
+    RSASSA_PKCS1_V1_5_SHA_256:
+      - RAW:    return SHA-256(decoded message).
+      - DIGEST: validate that the decoded bytes are exactly 32 bytes (SHA-256 output),
+                then return them as-is.
+
+    Raises:
+        ValueError: ED25519 + DIGEST mode, or RSA DIGEST with wrong length.
     """
     message = base64.b64decode(message_b64)
 
-    if message_type == "RAW":
-        return hashlib.sha256(message).digest()
-    elif message_type == "DIGEST":
-        if len(message) != _SHA256_DIGEST_LEN:
-            raise ValueError(
-                f"DIGEST_LENGTH_MISMATCH: expected {_SHA256_DIGEST_LEN} bytes "
-                f"for SHA-256 digest, got {len(message)}"
-            )
-        return message
-    else:
-        raise ValueError(f"Invalid message_type: {message_type}")
-
-
-def _sign_with_key(priv_key_bytes: bytes, algorithm: SigningAlgorithm, digest: bytes) -> bytes:
-    """Produce a signature using the private key material."""
     if algorithm == "ED25519":
-        # Ed25519 signs the full message, but since we always compute the digest
-        # ourselves, we sign the digest bytes directly.
+        if message_type == "DIGEST":
+            raise ValueError(
+                "ED25519_NO_PREHASH: ED25519 does not support DIGEST mode. "
+                "Use message_type=RAW and let the server hash the message."
+            )
+        # RAW: pass the full message; Ed25519 handles hashing internally.
+        return message
+
+    elif algorithm == "RSASSA_PKCS1_V1_5_SHA_256":
+        if message_type == "RAW":
+            return hashlib.sha256(message).digest()
+        elif message_type == "DIGEST":
+            if len(message) != _SHA256_DIGEST_LEN:
+                raise ValueError(
+                    f"DIGEST_LENGTH_MISMATCH: expected {_SHA256_DIGEST_LEN} bytes "
+                    f"for SHA-256 digest, got {len(message)}"
+                )
+            return message
+
+    raise ValueError(f"Unsupported algorithm: {algorithm}")
+
+
+def _sign_with_key(
+    priv_key_bytes: bytes,
+    algorithm: SigningAlgorithm,
+    signing_input: bytes,
+) -> bytes:
+    """
+    Produce a signature.
+
+    For ED25519, signing_input is the raw message (library does SHA-512 internally).
+    For RSA, signing_input is a SHA-256 digest (used with Prehashed).
+    """
+    if algorithm == "ED25519":
         private_key = Ed25519PrivateKey.from_private_bytes(priv_key_bytes)
-        return private_key.sign(digest)
+        return private_key.sign(signing_input)
     elif algorithm == "RSASSA_PKCS1_V1_5_SHA_256":
         private_key = serialization.load_der_private_key(priv_key_bytes, password=None)
         return private_key.sign(
-            digest,
+            signing_input,
             padding.PKCS1v15(),
             utils.Prehashed(hashes.SHA256()),
         )
@@ -125,23 +160,23 @@ def _sign_with_key(priv_key_bytes: bytes, algorithm: SigningAlgorithm, digest: b
 def _verify_with_key(
     pub_key_bytes: bytes,
     algorithm: SigningAlgorithm,
-    digest: bytes,
+    signing_input: bytes,
     signature: bytes,
 ) -> bool:
     """
     Verify a signature. Returns True if valid, False otherwise.
-    Never raises on bad signatures.
+    Never raises on bad signatures — all exceptions are caught and return False.
     """
     try:
         if algorithm == "ED25519":
             public_key = Ed25519PublicKey.from_public_bytes(pub_key_bytes)
-            public_key.verify(signature, digest)
+            public_key.verify(signature, signing_input)
             return True
         elif algorithm == "RSASSA_PKCS1_V1_5_SHA_256":
             public_key = serialization.load_der_public_key(pub_key_bytes)
             public_key.verify(
                 signature,
-                digest,
+                signing_input,
                 padding.PKCS1v15(),
                 utils.Prehashed(hashes.SHA256()),
             )
@@ -228,7 +263,8 @@ def sign(
     Args:
         key_name:     Name of the SIGN_VERIFY key.
         message_b64:  Base64-encoded message bytes.
-        message_type: ``"RAW"`` (hash first) or ``"DIGEST"`` (pre-hashed).
+        message_type: ``"RAW"`` (hash first for RSA; raw for ED25519) or
+                      ``"DIGEST"`` (RSA only — pre-computed SHA-256 hash).
         token:        Session token (must be the key owner).
 
     Returns:
@@ -236,7 +272,7 @@ def sign(
 
     Raises:
         Unauthenticated, VaultLocked, KeyNotFound, InvalidKeyUsage,
-        PermissionDenied, ValueError (bad DIGEST length).
+        PermissionDenied, ValueError (bad DIGEST length, or ED25519 + DIGEST mode).
     """
     caller_email = verify_token(token)
     dek = get_dek()
@@ -250,11 +286,13 @@ def sign(
         )
 
     algorithm = key_row["signing_algorithm"]
-    digest = _prepare_digest(message_b64, message_type)
 
-    # Temporarily decrypt the private key
+    # Prepare signing input — raises ValueError for ED25519+DIGEST (Fix 3).
+    signing_input = _prepare_signing_input(message_b64, message_type, algorithm)
+
+    # Temporarily decrypt the private key (stays in memory only).
     priv_bytes = _decrypt_with_dek(dek, key_row["encrypted_key_material_b64"])
-    signature = _sign_with_key(priv_bytes, algorithm, digest)
+    signature = _sign_with_key(priv_bytes, algorithm, signing_input)
 
     return {
         "signature_b64": base64.b64encode(signature).decode(),
@@ -273,12 +311,14 @@ def verify(
     """
     Verify a signature against the named signing key.
 
-    Never raises on bad signature — always returns a structured result.
+    Bad signatures (wrong key, tampered message) return signature_valid: false.
+    Usage errors (ED25519 + DIGEST mode) raise ValueError — consistent with sign()
+    so the same request cannot be accepted on one path and rejected on the other (Q2).
 
     Args:
         key_name:      Name of the SIGN_VERIFY key.
         message_b64:   Base64-encoded message bytes.
-        message_type:  ``"RAW"`` or ``"DIGEST"``.
+        message_type:  ``"RAW"`` or ``"DIGEST"`` (RSA only).
         signature_b64: Base64-encoded signature to verify.
         token:         Session token (must be the key owner).
 
@@ -286,8 +326,9 @@ def verify(
         {"key_name": str, "signature_valid": bool, "signing_algorithm": str}
 
     Raises:
-        Unauthenticated, VaultLocked, KeyNotFound, InvalidKeyUsage, PermissionDenied.
-        (Bad/malformed signature → signature_valid: false, not an exception.)
+        Unauthenticated, VaultLocked, KeyNotFound, InvalidKeyUsage, PermissionDenied,
+        ValueError (ED25519 + DIGEST mode, or RSA DIGEST wrong length).
+        (Bad/malformed signature bytes themselves → signature_valid: false, not an exception.)
     """
     caller_email = verify_token(token)
     get_dek()  # Ensure vault is unlocked
@@ -302,7 +343,7 @@ def verify(
 
     algorithm = key_row["signing_algorithm"]
 
-    # Decode the signature (bad base64 → signature_valid: false)
+    # Decode the signature bytes (malformed base64 → signature_valid: false).
     try:
         signature = base64.b64decode(signature_b64)
     except Exception:
@@ -312,19 +353,14 @@ def verify(
             "signing_algorithm": algorithm,
         }
 
-    # Prepare the digest
-    try:
-        digest = _prepare_digest(message_b64, message_type)
-    except ValueError:
-        return {
-            "key_name": key_name,
-            "signature_valid": False,
-            "signing_algorithm": algorithm,
-        }
+    # Prepare signing input.
+    # ValueError (e.g. ED25519 + DIGEST mode) propagates as a 400 error,
+    # consistent with sign() behaviour (Q2 answer — apply to both paths).
+    signing_input = _prepare_signing_input(message_b64, message_type, algorithm)
 
-    # Load the public key and verify
+    # Load the public key and verify (bad signature → False, never raises).
     pub_bytes = base64.b64decode(key_row["public_key_b64"])
-    is_valid = _verify_with_key(pub_bytes, algorithm, digest, signature)
+    is_valid = _verify_with_key(pub_bytes, algorithm, signing_input, signature)
 
     return {
         "key_name": key_name,

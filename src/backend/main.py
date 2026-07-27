@@ -18,6 +18,7 @@ from src.auth.session import (
     AccountLocked,
     RegistrationError,
     Unauthenticated,
+    verify_token,
 )
 from src.auth.session import (
     login as auth_login,
@@ -28,11 +29,11 @@ from src.auth.session import (
 from src.auth.session import (
     register as auth_register,
 )
-from src.core.vault import VaultLocked, init_vault, is_initialized, is_unlocked, unlock_vault
+from src.core.vault import VaultLocked, WeakPassphrase, init_vault, is_initialized, is_unlocked, unlock_vault
+from src.storage.db import get_db, init_db
 from src.kv import engine as kv_engine
 from src.kv import versioning as kv_versioning
 from src.kv.engine import NotFound, PermissionDenied, TagMismatch
-from src.storage.db import init_db
 from src.transit import acl as vault_acl
 from src.transit import crypto as transit_crypto
 from src.transit import keys as transit_keys
@@ -124,14 +125,32 @@ class VaultPassphraseRequest(BaseModel):
 
 @router.post("/vault/init")
 def post_vault_init(req: VaultPassphraseRequest):
-    init_vault(req.passphrase)
-    return {"status": "success"}
+    # R1 fix: Prevent silent DEK overwrite on second init call
+    if is_initialized():
+        raise HTTPException(status_code=409, detail="VAULT_ALREADY_INITIALIZED")
+    try:
+        init_vault(req.passphrase)
+        return {"status": "success"}
+    except WeakPassphrase as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        handle_common_exceptions(e)
 
 
 @router.post("/vault/unlock")
 def post_vault_unlock(req: VaultPassphraseRequest):
     try:
         unlock_vault(req.passphrase)
+        return {"status": "success"}
+    except Exception as e:
+        handle_common_exceptions(e)
+
+
+@router.post("/vault/lock")
+def post_vault_lock():
+    try:
+        from src.core.vault import lock_vault
+        lock_vault()
         return {"status": "success"}
     except Exception as e:
         handle_common_exceptions(e)
@@ -200,7 +219,21 @@ def logout_session(token: str = Depends(get_token)):
 
 @router.get("/audit/events")
 def list_audit_events():
-    return {"events": [], "total": 0, "page": 1, "page_size": 50}
+    # Admin accesses this endpoint without a traditional auth session token,
+    # so we protect it verifying the vault Master DEK is currently loaded in memory.
+    from src.core.vault import get_dek
+
+    try:
+        get_dek()
+    except VaultLocked:
+        raise HTTPException(status_code=423, detail="VAULT_LOCKED")
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT id, action, actor_email, resource, detail, result, timestamp "
+        "FROM audit_log ORDER BY id DESC LIMIT 50"
+    ).fetchall()
+    events = [dict(r) for r in rows]
+    return {"events": events, "total": len(events), "page": 1, "page_size": 50}
 
 
 # --- KV ENGINE ROUTES ---

@@ -13,6 +13,7 @@ Security model:
 import base64
 import json
 import os
+import re
 from pathlib import Path
 
 from argon2.low_level import Type, hash_secret_raw
@@ -27,6 +28,21 @@ class VaultLocked(Exception):
     """Raised when any operation is attempted while the vault is locked."""
 
     pass
+
+
+class WeakPassphrase(Exception):
+    """Raised when the master passphrase does not meet complexity requirements."""
+
+    pass
+
+
+# ---------------------------------------------------------------------------
+# Passphrase strength requirements (Fix 7)
+# Must have: >= 12 chars, 1 uppercase, 1 lowercase, 1 digit, 1 symbol.
+# ---------------------------------------------------------------------------
+_MASTER_PASSPHRASE_PATTERN = re.compile(
+    r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^a-zA-Z\d]).{12,}$'
+)
 
 
 # ---------------------------------------------------------------------------
@@ -135,15 +151,22 @@ def init_vault(passphrase: str) -> None:
     """
     First-run initialisation.
 
-    1. Generate a random Argon2id salt and a random 256-bit DEK.
-    2. Derive a wrapping key from *passphrase* + salt.
-    3. Wrap the DEK with AES-256-GCM.
-    4. Persist {kdf, kdf_salt_b64, nonce_b64, encrypted_dek_b64, status} to disk.
-    5. Load the plaintext DEK into memory (vault transitions to unlocked).
+    1. Validate passphrase complexity (Fix 7).
+    2. Generate a random Argon2id salt and a random 256-bit DEK.
+    3. Derive a wrapping key from *passphrase* + salt.
+    4. Wrap the DEK with AES-256-GCM.
+    5. Persist {kdf, kdf_salt_b64, nonce_b64, encrypted_dek_b64, status} to disk.
+    6. Load the plaintext DEK into memory (vault transitions to unlocked).
 
     The plaintext DEK is NEVER written to disk.
     """
     global _dek, _unlocked
+
+    if not _MASTER_PASSPHRASE_PATTERN.match(passphrase):
+        raise WeakPassphrase(
+            "PASSPHRASE_TOO_WEAK: master passphrase must be >=12 chars and contain "
+            "at least one uppercase letter, one lowercase letter, one digit, and one symbol."
+        )
 
     salt = os.urandom(_ARGON2_SALT_LEN)
     dek = os.urandom(32)  # 256-bit DEK

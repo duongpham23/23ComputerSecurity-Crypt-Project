@@ -63,12 +63,22 @@ export function getToken(): string | null {
   return sessionStorage.getItem(SESSION_TOKEN_KEY);
 }
 
+export function getUserLocal(): { email: string } | null {
+  const u = sessionStorage.getItem("mini_vault_user");
+  return u ? JSON.parse(u) : null;
+}
+
+export function setUserLocal(user: { email: string }): void {
+  sessionStorage.setItem("mini_vault_user", JSON.stringify(user));
+}
+
 export function setToken(token: string): void {
   sessionStorage.setItem(SESSION_TOKEN_KEY, token);
 }
 
 export function clearToken(): void {
   sessionStorage.removeItem(SESSION_TOKEN_KEY);
+  sessionStorage.removeItem("mini_vault_user");
 }
 
 // ---------------------------------------------------------------------------
@@ -160,18 +170,29 @@ export async function apiFetch<T = unknown>(
   // Error — map to ApiError
   const errorPayload = data as {
     code?: string;
-    detail?: string;
+    detail?: string | any;
     message?: string;
     lock_expires_at?: string;
   } | null;
 
-  const serverCode = errorPayload?.code?.toUpperCase() ?? "";
-  const serverMessage =
-    errorPayload?.detail ?? errorPayload?.message ?? response.statusText;
+  let serverCode = errorPayload?.code?.toUpperCase() ?? "";
+  let serverMessage = errorPayload?.message ?? response.statusText;
+  let apiDetail = errorPayload;
+
+  if (errorPayload?.detail) {
+    if (typeof errorPayload.detail === "string") {
+      serverMessage = errorPayload.detail;
+      if (!serverCode) serverCode = errorPayload.detail.toUpperCase();
+    } else if (typeof errorPayload.detail === "object") {
+      serverCode = errorPayload.detail.code?.toUpperCase() ?? serverCode;
+      serverMessage = errorPayload.detail.message ?? errorPayload.detail.detail ?? serverCode;
+      apiDetail = errorPayload.detail;
+    }
+  }
 
   // Map HTTP status / server codes to our typed ApiErrorCode
   let code: ApiErrorCode;
-  if (serverCode === "VAULT_LOCKED") {
+  if (serverCode === "VAULT_LOCKED" || response.status === 423) {
     code = "VAULT_LOCKED";
   } else if (response.status === 401) {
     code = "SESSION_EXPIRED";
@@ -195,5 +216,5 @@ export async function apiFetch<T = unknown>(
     code = "UNKNOWN_ERROR";
   }
 
-  throw new ApiError(code, serverMessage, response.status, errorPayload);
+  throw new ApiError(code, String(serverMessage), response.status, apiDetail);
 }

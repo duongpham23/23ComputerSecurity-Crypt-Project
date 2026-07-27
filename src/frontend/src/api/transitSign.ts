@@ -26,7 +26,7 @@ import { apiFetch } from "./client";
 // Types
 // ---------------------------------------------------------------------------
 
-export type SignAlgorithm = "ED25519" | "RSA-2048" | "RSA-4096" | "ECDSA-P256";
+export type SignAlgorithm = "ED25519" | "RSASSA_PKCS1_V1_5_SHA_256";
 
 export interface SigningKey {
   name: string;

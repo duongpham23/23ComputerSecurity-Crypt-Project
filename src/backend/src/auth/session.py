@@ -9,6 +9,7 @@ Security model:
   - Error messages are deliberately generic to avoid leaking user enumeration info.
 """
 
+import re
 import secrets
 import time
 
@@ -23,6 +24,17 @@ TOKEN_TTL_SECONDS = 30 * 60  # 30-minute session lifetime
 LOCKOUT_MAX_ATTEMPTS = 5  # wrong attempts before lockout
 LOCKOUT_DURATION = 5 * 60  # lockout duration in seconds (5 min)
 MIN_PASSPHRASE_LENGTH = 12  # minimum passphrase length
+
+# Passphrase complexity pattern (Fix 7):
+# >= 12 chars, at least one of each: uppercase, lowercase, digit, symbol.
+_PASSPHRASE_PATTERN = re.compile(
+    r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^a-zA-Z\d]).{12,}$'
+)
+
+
+def _is_strong_passphrase(passphrase: str) -> bool:
+    """Return True if *passphrase* satisfies all complexity requirements."""
+    return bool(_PASSPHRASE_PATTERN.match(passphrase))
 
 
 # ---------------------------------------------------------------------------
@@ -68,8 +80,11 @@ def register(email: str, passphrase: str) -> dict:
     """
     if not email or "@" not in email or len(email) > 256:
         raise RegistrationError("INVALID_EMAIL")
-    if len(passphrase) < MIN_PASSPHRASE_LENGTH:
-        raise RegistrationError("PASSPHRASE_TOO_SHORT")
+    if not _is_strong_passphrase(passphrase):
+        raise RegistrationError(
+            "PASSPHRASE_TOO_WEAK: must be >=12 chars with at least one uppercase letter, "
+            "one lowercase letter, one digit, and one symbol."
+        )
 
     # Hash with bcrypt — salt is automatically embedded in the hash
     password_hash = bcrypt.hashpw(passphrase.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")

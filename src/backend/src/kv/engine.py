@@ -58,8 +58,18 @@ def _check_ownership(path: str, caller_email: str) -> None:
       - the path doesn't start with 'secret/'
       - the email segment doesn't match the caller
     The error intentionally does NOT reveal whether the path exists.
+    Denied attempts are logged to the audit log per spec §1.2.
     """
+    from src.storage.audit import log_action
+
     if not path.startswith(_PATH_PREFIX):
+        log_action(
+            action="KV_ACCESS_DENIED",
+            actor_email=caller_email,
+            resource=path,
+            detail={"reason": "INVALID_PATH_PREFIX"},
+            result="DENIED",
+        )
         raise PermissionDenied("PERMISSION_DENIED")
 
     # Extract the email segment between the first and second '/' after "secret/"
@@ -76,6 +86,13 @@ def _check_ownership(path: str, caller_email: str) -> None:
         from src.transit.acl import check_grant
 
         if not check_grant("kv", path, caller_email):
+            log_action(
+                action="KV_ACCESS_DENIED",
+                actor_email=caller_email,
+                resource=path,
+                detail={"reason": "NAMESPACE_MISMATCH", "path_owner": path_email},
+                result="DENIED",
+            )
             raise PermissionDenied("PERMISSION_DENIED")
 
 

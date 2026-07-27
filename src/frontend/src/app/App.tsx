@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { setToken, ApiError } from "@/api/client";
-import { vaultInit, vaultUnlock, register, login } from "@/api/auth";
+import { useUI } from "@/context/UIContext";
+import { vaultInit, vaultUnlock, register, login, vaultStatus } from "@/api/auth";
 import { writeSecret, readSecret, deleteSecret, listSecrets } from "@/api/kv";
 import { createEncryptKey, encrypt, decrypt, listEncryptKeys, revokeEncryptKey } from "@/api/transitEncrypt";
 import { createSignKey, signMessage, verifySignature, listSignKeys, revokeSignKey } from "@/api/transitSign";
+import { listAuditEvents, AuditEvent } from "@/api/auth";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -437,6 +439,17 @@ export function LoginScreen({ onLogin, onGoRegister, addToast, showFlash }: {
     if (!isEmail(email)) { addToast("INVALID EMAIL FORMAT", "error"); return; }
     if (!pass) { addToast("PASSPHRASE REQUIRED", "error"); return; }
     try {
+      const st = await vaultStatus();
+      if (!st.initialized || st.locked) {
+        addToast("VAULT LOCKED — PLEASE UNLOCK VIA /admin", "error");
+        return;
+      }
+    } catch {
+      addToast("VAULT LOCKED — PLEASE UNLOCK VIA /admin", "error");
+      return;
+    }
+
+    try {
       const data = await login(email, pass);
       setAttempts(0);
       showFlash("ACCESS GRANTED", "red", () => onLogin({ email: data.user.email }));
@@ -471,7 +484,7 @@ export function LoginScreen({ onLogin, onGoRegister, addToast, showFlash }: {
         )}
         <DInput label="Email / Operator ID" value={email} onChange={setEmail} type="email" placeholder="ALICE@EXAMPLE.COM" />
         <DInput label="Passphrase" value={pass} onChange={setPass} type="password" placeholder="••••••••" />
-        {attempts > 0 && !locked && (
+        {attempts > 0 && attempts < 5 && !locked && (
           <p style={{ fontFamily: GOTHIC, fontSize: 11, color: C.red, marginTop: -16, marginBottom: 20, letterSpacing: 1 }}>
             {5 - attempts} ATTEMPT{5 - attempts !== 1 ? "S" : ""} REMAINING BEFORE LOCKOUT
           </p>
@@ -749,7 +762,7 @@ export function TransitEncPanel({ user, addToast, showCrit }: { user: User; addT
         )}
         {tab === "decrypt" && (
           <div style={{ maxWidth: 560 }}>
-            <VTextarea label="Ciphertext" value={ciphertext} onChange={setCiphertext} placeholder="vault:v1:..." rows={4} accent={ACCENT} />
+            <VTextarea label="Ciphertext" value={ciphertext} onChange={setCiphertext} placeholder="vault:<key_name>:v1:<cipher>" rows={4} accent={ACCENT} />
             <HoverBtn bg={ACCENT} color="#fff" onClick={doDecrypt} fullWidth>DECRYPT</HoverBtn>
             {result && <div style={{ marginTop: 32, border: `1px solid ${C.border}`, padding: 16, backgroundColor: C.surface }}><p style={{ fontFamily: MINCHO, fontSize: 12, color: ACCENT, marginBottom: 8, letterSpacing: 2, textTransform: "uppercase" }}>PLAINTEXT</p><pre style={{ fontFamily: GOTHIC, fontSize: 12, color: C.text, lineHeight: 1.6, margin: 0 }}>{result}</pre></div>}
           </div>
@@ -824,7 +837,8 @@ export function TransitSignPanel({ user, addToast, showCrit }: { user: User; add
             <div style={{ marginBottom: 32 }}>
               <label style={{ fontFamily: MINCHO, fontSize: 14, color: C.subdued, textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 8 }}>Algorithm</label>
               <select value={algo} onChange={(e) => setAlgo(e.target.value)} style={{ width: "100%", backgroundColor: C.surface, border: `2px solid ${C.border}`, color: C.text, padding: 16, fontFamily: GOTHIC, fontSize: 16, outline: "none", borderRadius: 0 }}>
-                <option>ED25519</option><option>RSA-2048</option><option>RSA-4096</option>
+                <option value="ED25519">ED25519</option>
+                <option value="RSASSA_PKCS1_V1_5_SHA_256">RSA-2048 (PKCS#1 v1.5 SHA-256)</option>
               </select>
             </div>
             <HoverBtn bg={ACCENT} color="#fff" onClick={createKey} fullWidth>CREATE SIGNING KEY</HoverBtn>
@@ -878,20 +892,15 @@ export function TransitSignPanel({ user, addToast, showCrit }: { user: User; add
 
 // ─── Audit Panel ───────────────────────────────────────────────────────────────
 
-const AUDIT_ROWS: AuditRow[] = [
-  { ts: "2025-01-15T09:34:12Z", user: "alice@vault.io", action: "KV_WRITE", target: "secret/alice@vault.io/db", status: "OK" },
-  { ts: "2025-01-15T09:35:01Z", user: "alice@vault.io", action: "TRANSIT_ENCRYPT", target: "primary-key", status: "OK" },
-  { ts: "2025-01-15T09:36:44Z", user: "bob@vault.io", action: "KV_READ", target: "secret/alice@vault.io/db", status: "DENIED" },
-  { ts: "2025-01-15T09:37:10Z", user: "alice@vault.io", action: "KV_DELETE", target: "secret/alice@vault.io/old", status: "OK" },
-  { ts: "2025-01-15T09:40:22Z", user: "alice@vault.io", action: "TRANSIT_SIGN", target: "rsa-signing-key", status: "OK" },
-  { ts: "2025-01-15T09:42:55Z", user: "carol@vault.io", action: "LOGIN_FAIL", target: "—", status: "FAIL" },
-  { ts: "2025-01-15T09:43:03Z", user: "carol@vault.io", action: "LOGIN_FAIL", target: "—", status: "FAIL" },
-  { ts: "2025-01-15T09:43:11Z", user: "carol@vault.io", action: "ACCOUNT_LOCKED", target: "—", status: "FAIL" },
-  { ts: "2025-01-15T09:45:11Z", user: "alice@vault.io", action: "TRANSIT_VERIFY", target: "rsa-signing-key", status: "OK" },
-  { ts: "2025-01-15T09:48:00Z", user: "alice@vault.io", action: "KV_READ", target: "secret/alice@vault.io/api", status: "OK" },
-];
-
 export function AuditPanel() {
+  const [events, setEvents] = useState<AuditEvent[]>([]);
+  const { addToast } = useUI();
+
+  useEffect(() => {
+    listAuditEvents().then(res => setEvents(res.events))
+      .catch(err => addToast(err.message, "error"));
+  }, [addToast]);
+
   return (
     <div className="flex flex-col h-full overflow-hidden">
       <div className="flex-shrink-0 flex items-center px-8 py-4 gap-4" style={{ borderBottom: `1px solid ${C.border}`, backgroundColor: C.surface }}>
@@ -907,17 +916,17 @@ export function AuditPanel() {
             <span key={h} style={{ fontFamily: GOTHIC, fontSize: 10, fontWeight: 900, letterSpacing: 2, color: C.subdued }}>{h}</span>
           ))}
         </div>
-        {AUDIT_ROWS.map((row, i) => {
-          const sc = row.status === "OK" ? C.green : row.status === "DENIED" ? C.red : "#A0750A";
+        {events.map((row, i) => {
+          const sc = row.result === "OK" ? C.green : row.result === "DENIED" ? C.red : "#A0750A";
           return (
             <div key={i} className="grid px-8 py-3" style={{ gridTemplateColumns: "200px 1fr 1fr 1fr 80px", borderBottom: `1px solid ${C.border}`, backgroundColor: i % 2 === 0 ? C.surface : C.surfaceAlt }}
               onMouseEnter={(e) => e.currentTarget.style.backgroundColor = C.appBg}
               onMouseLeave={(e) => e.currentTarget.style.backgroundColor = i % 2 === 0 ? C.surface : C.surfaceAlt}>
-              <span style={{ fontFamily: "monospace", fontSize: 11, color: C.subdued }}>{row.ts}</span>
-              <span style={{ fontFamily: GOTHIC, fontSize: 12, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.user}</span>
+              <span style={{ fontFamily: "monospace", fontSize: 11, color: C.subdued }}>{row.timestamp}</span>
+              <span style={{ fontFamily: GOTHIC, fontSize: 12, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.actor_email}</span>
               <span style={{ fontFamily: GOTHIC, fontSize: 11, color: C.subdued, letterSpacing: 1 }}>{row.action}</span>
-              <span style={{ fontFamily: GOTHIC, fontSize: 11, color: C.subdued, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.target}</span>
-              <span style={{ fontFamily: GOTHIC, fontSize: 10, fontWeight: 900, letterSpacing: 1, color: sc }}>{row.status}</span>
+              <span style={{ fontFamily: GOTHIC, fontSize: 11, color: C.subdued, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.resource}</span>
+              <span style={{ fontFamily: GOTHIC, fontSize: 10, fontWeight: 900, letterSpacing: 1, color: sc }}>{row.result}</span>
             </div>
           );
         })}

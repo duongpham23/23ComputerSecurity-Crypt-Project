@@ -104,50 +104,81 @@ def _get_active_key(key_name: str, owner_email: str, *, required_usage: str | No
 
 def _check_key_ownership(key_name: str, caller_email: str, version: int | None = None) -> dict:
     """
-    Verify the caller owns the named key, returning the key row.
+    Verify the caller is authorised to use the named key, returning the key row.
 
-    If version is provided, fetches that specific version. Otherwise fetches the latest active.
-    Returns the key row as a dict.
-    Raises KeyNotFound (generic, does not disclose existence to non-owners).
+    Security design (Fix R4 + R2b):
+      - First queries by (key_name, owner_email) so the owner gets real errors
+        (KeyNotFound when the key doesn't exist, PermissionDenied never applies).
+      - If the caller is NOT the owner, we check ACL grants and ALWAYS return
+        PermissionDenied on failure — regardless of whether the key exists — to
+        prevent non-owners from probing key names (spec §2.3).
+      - Every denied attempt is written to the audit log (spec §2.3).
     """
     from src.kv.engine import PermissionDenied
+    from src.storage.audit import log_action
 
     conn = get_db()
 
-    # We first verify ownership of ANY version of this key to distinguish NotFound from PermissionDenied
-    any_row = conn.execute(
-        "SELECT owner_email FROM transit_keys WHERE key_name = ? LIMIT 1",
-        (key_name,),
+    # --- Check if the caller is the owner (query only by owner) ---
+    any_owned = conn.execute(
+        "SELECT 1 FROM transit_keys WHERE key_name = ? AND owner_email = ? LIMIT 1",
+        (key_name, caller_email),
     ).fetchone()
 
-    if any_row is None:
-        raise KeyNotFound(f"KEY_NOT_FOUND: {key_name}")
+    if any_owned is not None:
+        # Caller is the owner — show real errors for missing/revoked keys.
+        if version is not None:
+            row = conn.execute(
+                """SELECT * FROM transit_keys
+                   WHERE key_name = ? AND owner_email = ? AND key_version = ?""",
+                (key_name, caller_email, version),
+            ).fetchone()
+        else:
+            row = conn.execute(
+                """SELECT * FROM transit_keys
+                   WHERE key_name = ? AND owner_email = ? AND is_active = 1
+                   ORDER BY key_version DESC LIMIT 1""",
+                (key_name, caller_email),
+            ).fetchone()
 
-    if any_row["owner_email"] != caller_email:
-        # Check if they have an ACL grant
-        from src.transit.acl import check_grant
+        if row is None:
+            raise KeyNotFound(f"KEY_NOT_FOUND: {key_name}")
 
-        if not check_grant("transit", key_name, caller_email):
-            raise PermissionDenied("PERMISSION_DENIED")
+        return dict(row)
 
-    if version is not None:
-        row = conn.execute(
-            """SELECT * FROM transit_keys
-               WHERE key_name = ? AND owner_email = ? AND key_version = ?""",
-            (key_name, caller_email, version),
-        ).fetchone()
-    else:
-        row = conn.execute(
-            """SELECT * FROM transit_keys
-               WHERE key_name = ? AND owner_email = ? AND is_active = 1
-               ORDER BY key_version DESC LIMIT 1""",
-            (key_name, caller_email),
-        ).fetchone()
+    # --- Caller is NOT the owner — check ACL grant ---
+    from src.transit.acl import check_grant
 
-    if row is None:
-        raise KeyNotFound(f"KEY_NOT_FOUND: {key_name} (version {version or 'latest'})")
+    if check_grant("transit", key_name, caller_email):
+        # ACL-granted access: fetch the requested row (version or latest active).
+        if version is not None:
+            row = conn.execute(
+                """SELECT * FROM transit_keys
+                   WHERE key_name = ? AND key_version = ?""",
+                (key_name, version),
+            ).fetchone()
+        else:
+            row = conn.execute(
+                """SELECT * FROM transit_keys
+                   WHERE key_name = ? AND is_active = 1
+                   ORDER BY key_version DESC LIMIT 1""",
+                (key_name,),
+            ).fetchone()
 
-    return dict(row)
+        if row is None:
+            raise KeyNotFound(f"KEY_NOT_FOUND: {key_name}")
+
+        return dict(row)
+
+    # --- No ownership, no ACL: ALWAYS PermissionDenied (R4 + R2b) ---
+    log_action(
+        action="TRANSIT_ACCESS_DENIED",
+        actor_email=caller_email,
+        resource=key_name,
+        detail={"reason": "NOT_OWNER_OR_GRANTEE"},
+        result="DENIED",
+    )
+    raise PermissionDenied("PERMISSION_DENIED")
 
 
 # ---------------------------------------------------------------------------
