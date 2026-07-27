@@ -5,9 +5,9 @@ Implements Feature 1 (KV Engine) and Feature 2 (Transit Engine) according to the
 Crypt Project 1 spec, as well as Feature 0 (Vault Initialization and Auth).
 
 ## Team Members
-- Alice (12345678) — Core & Auth (Feature 0)
-- Bob (87654321) — KV Engine (Feature 1)
-- Charlie (11223344) — Transit Engine (Feature 2)
+
+- Dang Anh Kiet (23127077)
+- Pham Hong Thai Duong (23127355)
 
 ## Setup & Installation
 
