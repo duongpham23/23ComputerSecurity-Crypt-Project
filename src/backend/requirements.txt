@@ -5,3 +5,4 @@ argon2-cffi
 bcrypt
 python-dotenv
 pyotp
+setuptools>=83.0.0
