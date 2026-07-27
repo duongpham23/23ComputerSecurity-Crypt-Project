@@ -214,7 +214,7 @@ def create_key(key_name: str, token: str) -> dict:
     }
 
 
-def list_keys(token: str) -> list[dict]:
+def list_keys(token: str, usage: str | None = None) -> list[dict]:
     """
     List all active named keys owned by the token holder.
 
@@ -227,13 +227,22 @@ def list_keys(token: str) -> list[dict]:
     get_dek()  # Ensure vault is unlocked
 
     conn = get_db()
-    rows = conn.execute(
-        """SELECT key_name, key_usage, key_version, signing_algorithm, created_at
-           FROM transit_keys
-           WHERE owner_email = ? AND is_active = 1
-           ORDER BY created_at""",
-        (caller_email,),
-    ).fetchall()
+    if usage:
+        rows = conn.execute(
+            """SELECT key_name, key_usage, key_version, signing_algorithm, created_at
+               FROM transit_keys
+               WHERE owner_email = ? AND is_active = 1 AND key_usage = ?
+               ORDER BY created_at""",
+            (caller_email, usage),
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            """SELECT key_name, key_usage, key_version, signing_algorithm, created_at
+               FROM transit_keys
+               WHERE owner_email = ? AND is_active = 1
+               ORDER BY created_at""",
+            (caller_email,),
+        ).fetchall()
 
     return [
         {

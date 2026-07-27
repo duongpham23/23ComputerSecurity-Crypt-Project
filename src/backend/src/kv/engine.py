@@ -271,3 +271,27 @@ def delete(path: str, token: str) -> dict:
     conn.execute("DELETE FROM kv_secrets WHERE path = ?", (path,))
     conn.commit()
     return {"deleted": True, "path": path}
+
+
+def list_secrets(token: str) -> list[dict]:
+    """
+    List all secrets owned by the caller.
+
+    Args:
+        token: Session token.
+
+    Returns:
+        List of dicts: [{"path": str, "updated_at": float}]
+    """
+    caller_email = verify_token(token)
+    # The vault does not need to be unlocked just to list metadata, but we might want to check it.
+    # To match read/write behavior, we require an unlocked vault.
+    get_dek()
+
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT path, updated_at FROM kv_secrets WHERE owner_email = ? ORDER BY path ASC",
+        (caller_email,),
+    ).fetchall()
+
+    return [{"path": r["path"], "updated_at": r["updated_at"]} for r in rows]

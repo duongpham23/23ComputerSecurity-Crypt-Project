@@ -189,24 +189,19 @@ class TestTransitSignVerify:
 class TestTransitVaultLocked:
     def test_create_key_locked(self, db_conn):
         """2.1 — create_key must raise VaultLocked when vault is locked."""
-        import time
-
-        db_conn.execute(
-            "INSERT OR IGNORE INTO users (email, password_hash, created_at) VALUES (?, ?, ?)",
-            ("alice@example.com", "hashed", time.time()),
-        )
-        db_conn.commit()
+        from src.auth.session import register, login
+        register("alice@example.com", "Passphrase123!")
+        token = login("alice@example.com", "Passphrase123!")["token"]
         with pytest.raises(VaultLocked):
-            create_key("x", "stub-token-alice@example.com")
+            create_key("x", token)
 
     def test_encrypt_locked(self, db_conn):
         """2.2 — encrypt must raise VaultLocked when vault is locked."""
-        import time
-
-        db_conn.execute(
-            "INSERT OR IGNORE INTO users (email, password_hash, created_at) VALUES (?, ?, ?)",
-            ("alice@example.com", "hashed", time.time()),
-        )
-        db_conn.commit()
+        from src.auth.session import register, login
+        try:
+            register("alice@example.com", "Passphrase123!")
+        except:
+            pass
+        token = login("alice@example.com", "Passphrase123!")["token"]
         with pytest.raises(VaultLocked):
-            encrypt("x", base64.b64encode(b"x").decode(), "stub-token-alice@example.com")
+            encrypt("x", base64.b64encode(b"x").decode(), token)

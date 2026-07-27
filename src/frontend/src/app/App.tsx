@@ -1,4 +1,9 @@
 import React, { useState, useEffect, useCallback } from "react";
+import { setToken, ApiError } from "@/api/client";
+import { vaultInit, vaultUnlock, register, login } from "@/api/auth";
+import { writeSecret, readSecret, deleteSecret, listSecrets } from "@/api/kv";
+import { createEncryptKey, encrypt, decrypt, listEncryptKeys, revokeEncryptKey } from "@/api/transitEncrypt";
+import { createSignKey, signMessage, verifySignature, listSignKeys, revokeSignKey } from "@/api/transitSign";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -354,10 +359,15 @@ export function InitScreen({ onInit, addToast, showFlash }: {
   showFlash: (text: string, v: "black" | "red", cb?: () => void) => void;
 }) {
   const [pass, setPass] = useState(""); const [conf, setConf] = useState("");
-  function handle() {
+  async function handle() {
     if (pass.length < 12) { addToast("PASSPHRASE MUST BE AT LEAST 12 CHARACTERS", "error"); return; }
     if (pass !== conf) { addToast("PASSPHRASES DO NOT MATCH", "error"); return; }
-    showFlash("INITIALIZING", "black", () => showFlash("VAULT SEALED", "red", onInit));
+    try {
+      await vaultInit(pass);
+      showFlash("INITIALIZING", "black", () => showFlash("VAULT SEALED", "red", onInit));
+    } catch (err: any) {
+      addToast(err.message, "error");
+    }
   }
   return (
     <AuthCanvas>
@@ -379,9 +389,14 @@ export function UnlockScreen({ onUnlock, addToast, showFlash }: {
   showFlash: (text: string, v: "black" | "red", cb?: () => void) => void;
 }) {
   const [pass, setPass] = useState("");
-  function handle() {
+  async function handle() {
     if (!pass) { addToast("PASSPHRASE REQUIRED", "error"); return; }
-    showFlash("UNLOCKING", "black", () => showFlash("ACCESS GRANTED", "red", onUnlock));
+    try {
+      await vaultUnlock(pass);
+      showFlash("UNLOCKING", "black", () => showFlash("ACCESS GRANTED", "red", onUnlock));
+    } catch (err: any) {
+      addToast(err.message, "error");
+    }
   }
   return (
     <AuthCanvas lockedBar>
@@ -417,17 +432,26 @@ export function LoginScreen({ onLogin, onGoRegister, addToast, showFlash }: {
 
   const locked = !!lockedUntil;
 
-  function handle() {
+  async function handle() {
     if (locked) { addToast(`ACCOUNT LOCKED — ${Math.floor(remaining / 60)}:${String(remaining % 60).padStart(2, "0")} REMAINING`, "error"); return; }
     if (!isEmail(email)) { addToast("INVALID EMAIL FORMAT", "error"); return; }
     if (!pass) { addToast("PASSPHRASE REQUIRED", "error"); return; }
-    const next = attempts + 1;
-    if (next >= 5) {
-      setAttempts(0); setLockedUntil(new Date(Date.now() + 5 * 60_000)); setRemaining(300);
-      showFlash("ACCOUNT LOCKED", "red"); return;
+    try {
+      const data = await login(email, pass);
+      setAttempts(0);
+      showFlash("ACCESS GRANTED", "red", () => onLogin({ email: data.user.email }));
+    } catch (err: any) {
+      if (err instanceof ApiError && err.code === "ACCOUNT_LOCKED") {
+        // @ts-ignore
+        setLockedUntil(new Date(err.detail?.lock_expires_at ? err.detail.lock_expires_at * 1000 : Date.now() + 300000));
+        setRemaining(300);
+        showFlash("ACCOUNT LOCKED", "red");
+      } else {
+        const next = attempts + 1;
+        setAttempts(next);
+        addToast(err.message, "error");
+      }
     }
-    setAttempts(next);
-    showFlash("ACCESS GRANTED", "red", () => { setAttempts(0); onLogin({ email: sanitize(email) }); });
   }
 
   return (
@@ -471,11 +495,16 @@ export function RegisterScreen({ onRegister, onGoLogin, addToast, showFlash }: {
   showFlash: (text: string, v: "black" | "red", cb?: () => void) => void;
 }) {
   const [email, setEmail] = useState(""); const [pass, setPass] = useState(""); const [conf, setConf] = useState("");
-  function handle() {
+  async function handle() {
     if (!isEmail(email)) { addToast("INVALID EMAIL FORMAT", "error"); return; }
     if (pass.length < 12) { addToast("PASSPHRASE MUST BE AT LEAST 12 CHARACTERS", "error"); return; }
     if (pass !== conf) { addToast("PASSPHRASES DO NOT MATCH", "error"); return; }
-    showFlash("REGISTERED", "black", () => showFlash("CREDENTIALS STORED", "black", () => onRegister({ email: sanitize(email) })));
+    try {
+      await register(email, pass);
+      showFlash("REGISTERED", "black", () => showFlash("CREDENTIALS STORED", "black", () => onGoLogin()));
+    } catch (err: any) {
+      addToast(err.message, "error");
+    }
   }
   return (
     <AuthCanvas topRight={
@@ -515,30 +544,44 @@ export function KVPanel({ user, addToast, showCrit }: { user: User; addToast: (m
   const [path, setPath] = useState(`secret/${user.email}/`);
   const [payload, setPayload] = useState("");
   const [result, setResult] = useState<string | null>(null);
-  const [entries, setEntries] = useState<KVEntry[]>([
-    { path: `secret/${user.email}/db`, value: JSON.stringify({ password: "••••••••", host: "db.internal", port: 5432 }, null, 2), ts: new Date().toISOString() },
-    { path: `secret/${user.email}/api`, value: JSON.stringify({ key: "••••••••", endpoint: "api.service.io" }, null, 2), ts: new Date().toISOString() },
-  ]);
+  const [entries, setEntries] = useState<KVEntry[]>([]);
 
-  function doWrite() {
+  useEffect(() => {
+    listSecrets().then(res => setEntries(res.secrets.map((s: any) => ({ path: s.path, value: "", ts: s.updated_at }))))
+                 .catch(err => addToast(err.message, "error"));
+  }, [addToast]);
+
+  async function doWrite() {
     const p = sanitize(path.trim());
     if (!isValidPath(p, user.email)) { addToast("INVALID PATH OR PERMISSION_DENIED", "error"); return; }
-    try { JSON.parse(payload); } catch { addToast("PAYLOAD MUST BE VALID JSON", "error"); return; }
-    setEntries((prev) => [...prev.filter((e) => e.path !== p), { path: p, value: sanitize(payload), ts: new Date().toISOString() }]);
-    setResult(`Written to: ${p}`); addToast(`SECRET STORED: ${p}`, "success"); setPayload("");
+    let parsed;
+    try { parsed = JSON.parse(payload); } catch { addToast("PAYLOAD MUST BE VALID JSON", "error"); return; }
+    try {
+      await writeSecret(p, parsed);
+      setResult(`Written to: ${p}`); addToast(`SECRET STORED: ${p}`, "success"); setPayload("");
+      const res = await listSecrets();
+      setEntries(res.secrets.map((s: any) => ({ path: s.path, value: "", ts: s.updated_at })));
+    } catch (err: any) { addToast(err.message, "error"); }
   }
-  function doRead() {
+  async function doRead() {
     const p = sanitize(path.trim());
     if (!isValidPath(p, user.email)) { addToast("PERMISSION_DENIED", "error"); return; }
-    const entry = entries.find((e) => e.path === p);
-    if (!entry) { addToast("SECRET NOT FOUND", "error"); return; }
-    setResult(entry.value);
+    try {
+      const data = await readSecret(p);
+      setResult(JSON.stringify(data.value, null, 2));
+    } catch (err: any) { addToast(err.message, "error"); }
   }
-  function doDelete() {
+  async function doDelete() {
     const p = sanitize(path.trim());
     if (!isValidPath(p, user.email)) { addToast("PERMISSION_DENIED", "error"); return; }
-    if (!entries.find((e) => e.path === p)) { addToast("SECRET NOT FOUND", "error"); return; }
-    showCrit({ title: "DELETE SECRET", body: `This is permanent. The secret at "${p}" will be destroyed and cannot be recovered.`, confirmLabel: "DESTROY SECRET", variant: "red", onConfirm: () => { setEntries((prev) => prev.filter((e) => e.path !== p)); setResult(null); addToast(`SECRET DELETED: ${p}`, "success"); } });
+    showCrit({ title: "DELETE SECRET", body: `This is permanent. The secret at "${p}" will be destroyed and cannot be recovered.`, confirmLabel: "DESTROY SECRET", variant: "red", onConfirm: async () => { 
+        try {
+          await deleteSecret(p);
+          setResult(null); addToast(`SECRET DELETED: ${p}`, "success"); 
+          const res = await listSecrets();
+          setEntries(res.secrets.map((s: any) => ({ path: s.path, value: "", ts: s.updated_at })));
+        } catch(err: any) { addToast(err.message, "error"); }
+    } });
   }
 
   return (
@@ -604,34 +647,53 @@ export function KVPanel({ user, addToast, showCrit }: { user: User; addToast: (m
 
 export function TransitEncPanel({ user, addToast, showCrit }: { user: User; addToast: (m: string, t: Toast["type"]) => void; showCrit: (m: CritModal) => void }) {
   const [tab, setTab] = useState<"keys" | "encrypt" | "decrypt">("keys");
-  const [keys, setKeys] = useState<VKey[]>([{ name: "primary-key", kind: "enc", algorithm: "AES-256-GCM", version: 1, revoked: false, ts: new Date().toISOString() }]);
+  const [keys, setKeys] = useState<VKey[]>([]);
   const [newName, setNewName] = useState(""); const [selKey, setSelKey] = useState("");
   const [plaintext, setPlaintext] = useState(""); const [ciphertext, setCiphertext] = useState("");
   const [result, setResult] = useState<string | null>(null);
   const ACCENT = C.purple;
 
-  function createKey() {
+  useEffect(() => {
+    listEncryptKeys().then(res => setKeys(res.keys as any))
+                     .catch(err => addToast(err.message, "error"));
+  }, [addToast]);
+
+  async function createKey() {
     const n = sanitize(newName.trim());
     if (!isKeyName(n)) { addToast("INVALID KEY NAME — ALPHANUMERIC + DASH/UNDERSCORE", "error"); return; }
-    if (keys.find((k) => k.name === n)) { addToast("KEY NAME ALREADY EXISTS", "error"); return; }
-    setKeys((p) => [...p, { name: n, kind: "enc", algorithm: "AES-256-GCM", version: 1, revoked: false, ts: new Date().toISOString() }]);
-    addToast(`ENCRYPTION KEY CREATED: ${n}`, "success"); setNewName("");
+    try {
+      await createEncryptKey(n);
+      addToast(`ENCRYPTION KEY CREATED: ${n}`, "success"); setNewName("");
+      const res = await listEncryptKeys();
+      setKeys(res.keys as any);
+    } catch(err: any) { addToast(err.message, "error"); }
   }
-  function revokeKey(name: string) {
-    showCrit({ title: "REVOKE KEY", body: `Revoking "${name}" is irreversible. All data encrypted with this key becomes permanently inaccessible.`, confirmLabel: "REVOKE KEY", variant: "red", onConfirm: () => { setKeys((p) => p.map((k) => k.name === name ? { ...k, revoked: true } : k)); addToast(`KEY REVOKED: ${name}`, "info"); } });
+  async function revokeKey(name: string) {
+    showCrit({ title: "REVOKE KEY", body: `Revoking "${name}" is irreversible. All data encrypted with this key becomes permanently inaccessible.`, confirmLabel: "REVOKE KEY", variant: "red", onConfirm: async () => { 
+      try {
+        await revokeEncryptKey(name);
+        addToast(`KEY REVOKED: ${name}`, "info"); 
+        const res = await listEncryptKeys();
+        setKeys(res.keys as any);
+      } catch(err: any) { addToast(err.message, "error"); }
+    } });
   }
-  function doEncrypt() {
+  async function doEncrypt() {
     if (!selKey) { addToast("SELECT A KEY", "error"); return; }
     if (!plaintext) { addToast("PLAINTEXT REQUIRED", "error"); return; }
-    const key = keys.find((k) => k.name === selKey);
-    if (!key || key.revoked) { addToast("KEY UNAVAILABLE OR REVOKED", "error"); return; }
-    setResult(`vault:v${key.version}:${btoa(sanitize(plaintext)).slice(0, 24)}...${uid().slice(0, 8)}`);
-    addToast("DATA ENCRYPTED", "success");
+    try {
+      const data = await encrypt(selKey, btoa(sanitize(plaintext)));
+      setResult(data.ciphertext);
+      addToast("DATA ENCRYPTED", "success");
+    } catch(err: any) { addToast(err.message, "error"); }
   }
-  function doDecrypt() {
+  async function doDecrypt() {
     if (!ciphertext.startsWith("vault:")) { addToast("INVALID CIPHERTEXT FORMAT", "error"); return; }
-    setResult("{ DECRYPTED PLAINTEXT — accessible only within authorized session }");
-    addToast("DATA DECRYPTED", "success");
+    try {
+      const data = await decrypt("", ciphertext);
+      setResult(atob(data.plaintext));
+      addToast("DATA DECRYPTED", "success");
+    } catch(err: any) { addToast(err.message, "error"); }
   }
 
   return (
@@ -701,31 +763,43 @@ export function TransitEncPanel({ user, addToast, showCrit }: { user: User; addT
 
 export function TransitSignPanel({ user, addToast, showCrit }: { user: User; addToast: (m: string, t: Toast["type"]) => void; showCrit: (m: CritModal) => void }) {
   const [tab, setTab] = useState<"keys" | "sign" | "verify">("keys");
-  const [keys, setKeys] = useState<VKey[]>([{ name: "rsa-signing-key", kind: "sign", algorithm: "RSA-2048", version: 1, revoked: false, ts: new Date().toISOString() }]);
+  const [keys, setKeys] = useState<VKey[]>([]);
   const [newName, setNewName] = useState(""); const [algo, setAlgo] = useState("ED25519");
   const [selKey, setSelKey] = useState(""); const [message, setMessage] = useState("");
   const [sig, setSig] = useState(""); const [signResult, setSignResult] = useState<string | null>(null);
   const [verifyResult, setVerifyResult] = useState<boolean | null>(null);
   const ACCENT = "#B8860B"; // dark gold — readable on light
 
-  function createKey() {
+  useEffect(() => {
+    listSignKeys().then(res => setKeys(res.keys as any))
+                  .catch(err => addToast(err.message, "error"));
+  }, [addToast]);
+
+  async function createKey() {
     const n = sanitize(newName.trim());
     if (!isKeyName(n)) { addToast("INVALID KEY NAME", "error"); return; }
-    if (keys.find((k) => k.name === n)) { addToast("KEY NAME ALREADY EXISTS", "error"); return; }
-    setKeys((p) => [...p, { name: n, kind: "sign", algorithm: algo, version: 1, revoked: false, ts: new Date().toISOString() }]);
-    addToast(`SIGNING KEY CREATED: ${n}`, "success"); setNewName("");
+    try {
+      await createSignKey(n, algo as any);
+      addToast(`SIGNING KEY CREATED: ${n}`, "success"); setNewName("");
+      const res = await listSignKeys();
+      setKeys(res.keys as any);
+    } catch(err: any) { addToast(err.message, "error"); }
   }
-  function doSign() {
+  async function doSign() {
     if (!selKey) { addToast("SELECT A KEY", "error"); return; }
     if (!message) { addToast("MESSAGE REQUIRED", "error"); return; }
-    const key = keys.find((k) => k.name === selKey);
-    if (!key || key.revoked) { addToast("KEY UNAVAILABLE OR REVOKED", "error"); return; }
-    setSignResult(`v${key.version}:${btoa(sanitize(message)).slice(0, 16)}:${uid().slice(0, 24)}`);
-    addToast("MESSAGE SIGNED", "success");
+    try {
+      const data = await signMessage(selKey, message);
+      setSignResult(data.signature);
+      addToast("MESSAGE SIGNED", "success");
+    } catch(err: any) { addToast(err.message, "error"); }
   }
-  function doVerify() {
+  async function doVerify() {
     if (!selKey || !message || !sig) { addToast("KEY, MESSAGE AND SIGNATURE REQUIRED", "error"); return; }
-    setVerifyResult(sig.startsWith("v1:") || sig.startsWith("v2:"));
+    try {
+      const data = await verifySignature(selKey, message, sig);
+      setVerifyResult(data.signature_valid);
+    } catch(err: any) { addToast(err.message, "error"); }
   }
 
   return (

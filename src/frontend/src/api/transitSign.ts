@@ -76,7 +76,16 @@ function keyUrl(name: string): string {
  * Lists all signing keys owned by the caller (including revoked ones).
  */
 export async function listSignKeys(): Promise<SignKeyListResponse> {
-  return apiFetch<SignKeyListResponse>("/transit/sign-keys");
+  const resp = await apiFetch<any>("/transit/signing-keys");
+  return {
+    keys: (resp.keys || []).map((k: any) => ({
+      name: k.key_name,
+      algorithm: k.signing_algorithm,
+      version: k.key_version,
+      revoked: false, // Backend list_keys only returns active keys
+      created_at: new Date(k.created_at * 1000).toISOString()
+    }))
+  };
 }
 
 /**
@@ -91,10 +100,12 @@ export async function createSignKey(
   name: string,
   algorithm: SignAlgorithm = "ED25519",
 ): Promise<SignKeyResponse> {
-  return apiFetch<SignKeyResponse>("/transit/sign-keys", {
+  // @ts-ignore
+  const resp = await apiFetch<any>("/transit/signing-keys", {
     method: "POST",
-    body: { name, algorithm },
+    body: { key_name: name, signing_algorithm: algorithm },
   });
+  return { key: resp.data };
 }
 
 /**
@@ -103,7 +114,7 @@ export async function createSignKey(
  * Returns metadata for a single signing key (never the private key material).
  */
 export async function getSignKey(name: string): Promise<SignKeyResponse> {
-  return apiFetch<SignKeyResponse>(keyUrl(name));
+  throw new Error("getSignKey not implemented in backend");
 }
 
 /**
@@ -115,7 +126,7 @@ export async function getSignKey(name: string): Promise<SignKeyResponse> {
  * @throws {ApiError} NOT_FOUND (404) | PERMISSION_DENIED (403)
  */
 export async function revokeSignKey(name: string): Promise<void> {
-  await apiFetch(keyUrl(name), { method: "DELETE" });
+  await apiFetch(`/transit/keys/${encodeURIComponent(name)}`, { method: "DELETE" });
 }
 
 // ---------------------------------------------------------------------------
@@ -136,10 +147,16 @@ export async function signMessage(
   keyName: string,
   message: string,
 ): Promise<SignResponse> {
-  return apiFetch<SignResponse>(`${keyUrl(keyName)}/sign`, {
+  // @ts-ignore
+  const resp = await apiFetch<any>(`/transit/sign`, {
     method: "POST",
-    body: { message },
+    body: { key_name: keyName, message_b64: btoa(message), message_type: "RAW" },
   });
+  return {
+    signature: resp.data.signature_b64,
+    key_name: keyName,
+    key_version: 1, // Optional mock
+  };
 }
 
 /**
@@ -160,8 +177,13 @@ export async function verifySignature(
   message: string,
   signature: string,
 ): Promise<VerifyResponse> {
-  return apiFetch<VerifyResponse>(`${keyUrl(keyName)}/verify`, {
+  // @ts-ignore
+  const resp = await apiFetch<any>(`/transit/verify`, {
     method: "POST",
-    body: { message, signature },
+    body: { key_name: keyName, message_b64: btoa(message), message_type: "RAW", signature_b64: signature },
   });
+  return {
+    signature_valid: resp.data.signature_valid,
+    key_name: keyName,
+  };
 }

@@ -1,5 +1,5 @@
-import { useState, useCallback } from "react";
-import { Outlet, useNavigate } from "react-router";
+import { useState, useCallback, useEffect } from "react";
+import { Outlet, useNavigate, useLocation } from "react-router";
 
 import {
   C, FlashScreen, CritModalOverlay, ToastStack,
@@ -9,14 +9,31 @@ import { UIContext } from "@/context/UIContext";
 import type { ToastMsg, ModalCfg, CurrentUser } from "@/context/UIContext";
 import { ApiError } from "@/api/client";
 import { clearToken } from "@/api/client";
+import { vaultStatus } from "@/api/auth";
 
 export function ClientLayout() {
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [modal, setModal] = useState<CritModal | null>(null);
   const [flash, setFlash] = useState<{ text: string; variant: "black" | "red"; cb?: () => void } | null>(null);
   const [user, setUser] = useState<User | null>(null);
+
+  // Check vault status on mount. If locked or uninit, force to /admin.
+  // Wait until status is known before rendering children to prevent errors.
+  const [vaultChecked, setVaultChecked] = useState(false);
+  useEffect(() => {
+    vaultStatus().then(s => {
+      if (!s.initialized || s.locked) {
+        navigate("/admin", { replace: true });
+      } else {
+        setVaultChecked(true);
+      }
+    }).catch(() => {
+      navigate("/admin", { replace: true });
+    });
+  }, [navigate, location.pathname]);
 
   const addToast = useCallback((message: string, type: Toast["type"]) => {
     const id = Math.random().toString(36).slice(2);
@@ -111,7 +128,7 @@ export function ClientLayout() {
         {modal && !flash && (
           <CritModalOverlay modal={modal} onClose={() => setModal(null)} />
         )}
-        {!flash && <Outlet />}
+        {!flash && vaultChecked && <Outlet />}
         <ToastStack toasts={toasts} onDismiss={dismissToast} />
       </div>
     </UIContext.Provider>

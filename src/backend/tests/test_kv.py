@@ -100,24 +100,19 @@ class TestKVAccessControl:
 class TestKVVaultLocked:
     def test_write_while_locked_raises(self, db_conn):
         """1.1 — write must raise VaultLocked when the vault is not unlocked."""
-        import time
-
-        db_conn.execute(
-            "INSERT OR IGNORE INTO users (email, password_hash, created_at) VALUES (?, ?, ?)",
-            ("alice@example.com", "hashed", time.time()),
-        )
-        db_conn.commit()
+        from src.auth.session import register, login
+        register("alice@example.com", "Passphrase123!")
+        token = login("alice@example.com", "Passphrase123!")["token"]
         with pytest.raises(VaultLocked):
-            write("secret/alice@example.com/x", {}, "stub-token-alice@example.com")
+            write("secret/alice@example.com/x", {}, token)
 
     def test_read_while_locked_raises(self, db_conn):
         """1.1 — read must raise VaultLocked when the vault is not unlocked."""
-        import time
-
-        db_conn.execute(
-            "INSERT OR IGNORE INTO users (email, password_hash, created_at) VALUES (?, ?, ?)",
-            ("alice@example.com", "hashed", time.time()),
-        )
-        db_conn.commit()
+        from src.auth.session import register, login
+        try:
+            register("alice@example.com", "Passphrase123!")
+        except:
+            pass
+        token = login("alice@example.com", "Passphrase123!")["token"]
         with pytest.raises(VaultLocked):
-            read("secret/alice@example.com/x", "stub-token-alice@example.com")
+            read("secret/alice@example.com/x", token)
