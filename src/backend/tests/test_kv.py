@@ -39,9 +39,7 @@ class TestKVWriteRead:
         with pytest.raises(NotFound):
             read("secret/alice@example.com/tmp", alice_token)
 
-    def test_tampered_ciphertext_raises_tag_mismatch(
-        self, unlocked_vault, alice_token, db_conn
-    ):
+    def test_tampered_ciphertext_raises_tag_mismatch(self, unlocked_vault, alice_token, db_conn):
         """1.1 — altering 1 byte in the ciphertext on disk must raise TagMismatch."""
         write("secret/alice@example.com/tamper", {"secret": "value"}, alice_token)
         # Flip a byte in the stored ciphertext_b64
@@ -101,6 +99,7 @@ class TestKVVaultLocked:
     def test_write_while_locked_raises(self, db_conn):
         """1.1 — write must raise VaultLocked when the vault is not unlocked."""
         from src.auth.session import login, register
+
         register("alice@example.com", "Passphrase123!")
         token = login("alice@example.com", "Passphrase123!")["token"]
         with pytest.raises(VaultLocked):
@@ -109,6 +108,7 @@ class TestKVVaultLocked:
     def test_read_while_locked_raises(self, db_conn):
         """1.1 — read must raise VaultLocked when the vault is not unlocked."""
         from src.auth.session import login, register
+
         try:
             register("alice@example.com", "Passphrase123!")
         except Exception:

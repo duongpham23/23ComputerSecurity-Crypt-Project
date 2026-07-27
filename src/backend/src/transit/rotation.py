@@ -60,11 +60,8 @@ def rotate_key(key_name: str, token: str) -> dict:
             new_version,
             1,
             now,
-        )
+        ),
     )
     conn.commit()
 
-    return {
-        "key_name": key_name,
-        "key_version": new_version
-    }
+    return {"key_name": key_name, "key_version": new_version}

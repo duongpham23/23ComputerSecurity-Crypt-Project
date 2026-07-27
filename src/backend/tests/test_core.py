@@ -11,6 +11,7 @@ import src.core.vault as vault_mod
 # Helper: reset vault state between tests
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture(autouse=True)
 def reset_vault_state(tmp_path, monkeypatch):
     """
@@ -29,6 +30,7 @@ def reset_vault_state(tmp_path, monkeypatch):
 # ---------------------------------------------------------------------------
 # is_initialized
 # ---------------------------------------------------------------------------
+
 
 class TestVaultInit:
     def test_vault_starts_locked(self):
@@ -83,6 +85,7 @@ class TestVaultInit:
 # ---------------------------------------------------------------------------
 # Unlock tests
 # ---------------------------------------------------------------------------
+
 
 class TestVaultUnlock:
     def test_unlock_with_correct_passphrase(self, tmp_path):

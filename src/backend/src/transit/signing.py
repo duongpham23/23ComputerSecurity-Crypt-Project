@@ -104,9 +104,7 @@ def _prepare_digest(message_b64: str, message_type: MessageType) -> bytes:
         raise ValueError(f"Invalid message_type: {message_type}")
 
 
-def _sign_with_key(
-    priv_key_bytes: bytes, algorithm: SigningAlgorithm, digest: bytes
-) -> bytes:
+def _sign_with_key(priv_key_bytes: bytes, algorithm: SigningAlgorithm, digest: bytes) -> bytes:
     """Produce a signature using the private key material."""
     if algorithm == "ED25519":
         # Ed25519 signs the full message, but since we always compute the digest

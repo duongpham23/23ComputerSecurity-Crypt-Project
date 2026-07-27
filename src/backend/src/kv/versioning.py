@@ -43,7 +43,7 @@ def read_version(path: str, version: int, token: str) -> dict:
     # Check if the requested version is currently the active one in kv_secrets
     active_row = conn.execute(
         "SELECT nonce_b64, ciphertext_b64, tag_b64 FROM kv_secrets WHERE path = ? AND version = ?",
-        (path, version)
+        (path, version),
     ).fetchone()
 
     if active_row:
@@ -52,7 +52,7 @@ def read_version(path: str, version: int, token: str) -> dict:
         # Check historical versions
         row = conn.execute(
             "SELECT nonce_b64, ciphertext_b64, tag_b64 FROM kv_versions WHERE path = ? AND version = ?",
-            (path, version)
+            (path, version),
         ).fetchone()
 
     if not row:

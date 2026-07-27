@@ -75,9 +75,7 @@ def _decrypt_with_dek(dek: bytes, encrypted_b64: str) -> bytes:
     return aesgcm.decrypt(nonce, ct_with_tag, None)
 
 
-def _get_active_key(
-    key_name: str, owner_email: str, *, required_usage: str | None = None
-) -> dict:
+def _get_active_key(key_name: str, owner_email: str, *, required_usage: str | None = None) -> dict:
     """
     Look up the latest active version of a named key.
 
@@ -128,7 +126,8 @@ def _check_key_ownership(key_name: str, caller_email: str, version: int | None =
     if any_row["owner_email"] != caller_email:
         # Check if they have an ACL grant
         from src.transit.acl import check_grant
-        if not check_grant('transit', key_name, caller_email):
+
+        if not check_grant("transit", key_name, caller_email):
             raise PermissionDenied("PERMISSION_DENIED")
 
     if version is not None:
@@ -200,11 +199,12 @@ def create_key(key_name: str, token: str) -> dict:
     conn.commit()
 
     from src.storage.audit import log_action
+
     log_action(
         action="CREATE_KEY",
         actor_email=caller_email,
         resource=key_name,
-        detail={"key_usage": "ENCRYPT_DECRYPT", "version": 1}
+        detail={"key_usage": "ENCRYPT_DECRYPT", "version": 1},
     )
 
     return {

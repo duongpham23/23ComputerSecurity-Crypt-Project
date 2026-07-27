@@ -34,8 +34,12 @@ token = session["token"]
 # --- 1. KV Engine Sample Data ---
 from src.kv import engine as kv_engine  # noqa: E402
 
-kv_engine.write("secret/alice@example.com/db_creds", {"username": "admin", "password": "supersecret"}, token)
-kv_engine.write("secret/alice@example.com/api_keys", {"aws": "AKIA...", "stripe": "sk_test..."}, token)
+kv_engine.write(
+    "secret/alice@example.com/db_creds", {"username": "admin", "password": "supersecret"}, token
+)
+kv_engine.write(
+    "secret/alice@example.com/api_keys", {"aws": "AKIA...", "stripe": "sk_test..."}, token
+)
 
 # --- 2. Transit Engine Sample Data ---
 from src.transit import crypto as transit_crypto  # noqa: E402
@@ -64,7 +68,7 @@ transit_samples = {
     "encrypted_ciphertext": ciphertext,
     "signing_key_used": "my-signer",
     "signed_message_b64": msg_b64,
-    "signature_b64": signature
+    "signature_b64": signature,
 }
 
 with open(os.path.join(samples_dir, "transit_sample.json"), "w") as f:

@@ -29,6 +29,7 @@ def _reset_vault(vault_data_dir):
 def db_conn(vault_data_dir):
     """Isolated SQLite connection for each test."""
     import src.storage.db as db
+
     db._local.__dict__.clear()
     db.init_db()
     conn = db.get_db()

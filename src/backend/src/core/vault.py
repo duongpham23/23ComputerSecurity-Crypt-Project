@@ -25,21 +25,23 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 class VaultLocked(Exception):
     """Raised when any operation is attempted while the vault is locked."""
+
     pass
 
 
 # ---------------------------------------------------------------------------
 # Argon2id KDF parameters (OWASP recommended minimums)
 # ---------------------------------------------------------------------------
-_ARGON2_TIME_COST    = 3        # iterations
-_ARGON2_MEMORY_COST  = 65536   # 64 MiB
-_ARGON2_PARALLELISM  = 2
-_ARGON2_HASH_LEN     = 32      # output length matches AES-256 key size
-_ARGON2_SALT_LEN     = 16      # 128-bit random salt
+_ARGON2_TIME_COST = 3  # iterations
+_ARGON2_MEMORY_COST = 65536  # 64 MiB
+_ARGON2_PARALLELISM = 2
+_ARGON2_HASH_LEN = 32  # output length matches AES-256 key size
+_ARGON2_SALT_LEN = 16  # 128-bit random salt
 
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
+
 
 def _meta_path() -> Path:
     """Return path to the vault metadata file (read from env for testability)."""
@@ -58,6 +60,7 @@ _unlocked: bool = False
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
 
 def _derive_wrapping_key(passphrase: str, salt: bytes) -> bytes:
     """
@@ -110,6 +113,7 @@ def _unwrap_dek(wrapping_key: bytes, nonce_b64: str, ct_b64: str) -> bytes:
 # Public API
 # ---------------------------------------------------------------------------
 
+
 def get_dek() -> bytes:
     """Return the active DEK or raise VaultLocked if the vault is sealed."""
     if not _unlocked or _dek is None:
@@ -142,7 +146,7 @@ def init_vault(passphrase: str) -> None:
     global _dek, _unlocked
 
     salt = os.urandom(_ARGON2_SALT_LEN)
-    dek  = os.urandom(32)  # 256-bit DEK
+    dek = os.urandom(32)  # 256-bit DEK
 
     wrapping_key = _derive_wrapping_key(passphrase, salt)
     nonce_b64, encrypted_dek_b64 = _wrap_dek(wrapping_key, dek)
@@ -152,7 +156,7 @@ def init_vault(passphrase: str) -> None:
         "kdf_salt_b64": base64.b64encode(salt).decode(),
         "nonce_b64": nonce_b64,
         "encrypted_dek_b64": encrypted_dek_b64,
-        "status": "locked",   # on-disk status is always "locked" (in-memory state differs)
+        "status": "locked",  # on-disk status is always "locked" (in-memory state differs)
     }
     _meta_path().write_text(json.dumps(meta, indent=2))
 

@@ -63,9 +63,11 @@ router = APIRouter()
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login", auto_error=False)
 
+
 def get_token(token: str = Depends(oauth2_scheme)) -> str:
     """Extract Bearer token from Authorization header. Returns empty string if missing."""
     return token or ""
+
 
 def handle_common_exceptions(exc: Exception):
     if isinstance(exc, VaultLocked):
@@ -85,6 +87,7 @@ def handle_common_exceptions(exc: Exception):
         raise HTTPException(status_code=400, detail="TAG_MISMATCH")
     raise HTTPException(status_code=500, detail=str(exc))
 
+
 def handle_transit_exceptions(exc: Exception):
     if isinstance(exc, InvalidKeyUsage):
         raise HTTPException(status_code=400, detail="INVALID_KEY_USAGE")
@@ -96,7 +99,9 @@ def handle_transit_exceptions(exc: Exception):
         raise HTTPException(status_code=400, detail=str(exc))
     handle_common_exceptions(exc)
 
+
 # --- HEALTH ---
+
 
 @router.get("/")
 @router.get("/health")
@@ -104,22 +109,24 @@ def health() -> dict:
     """Health check."""
     return {"service": "MiniVault", "status": "ok"}
 
+
 # --- VAULT LIFECYCLE ---
+
 
 @router.get("/vault")
 def vault_status():
-    return {
-        "initialized": is_initialized(),
-        "locked": not is_unlocked()
-    }
+    return {"initialized": is_initialized(), "locked": not is_unlocked()}
+
 
 class VaultPassphraseRequest(BaseModel):
     passphrase: str
+
 
 @router.post("/vault/init")
 def post_vault_init(req: VaultPassphraseRequest):
     init_vault(req.passphrase)
     return {"status": "success"}
+
 
 @router.post("/vault/unlock")
 def post_vault_unlock(req: VaultPassphraseRequest):
@@ -129,11 +136,14 @@ def post_vault_unlock(req: VaultPassphraseRequest):
     except Exception as e:
         handle_common_exceptions(e)
 
+
 # --- USER & SESSION ---
+
 
 class UserRegisterRequest(BaseModel):
     email: str
     passphrase: str
+
 
 @router.post("/users", status_code=status.HTTP_201_CREATED)
 def register_user(req: UserRegisterRequest):
@@ -184,22 +194,22 @@ def logout_session(token: str = Depends(get_token)):
     auth_logout(token)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
+
 # --- AUDIT LOGS ---
+
 
 @router.get("/audit/events")
 def list_audit_events():
-    return {
-        "events": [],
-        "total": 0,
-        "page": 1,
-        "page_size": 50
-    }
+    return {"events": [], "total": 0, "page": 1, "page_size": 50}
+
 
 # --- KV ENGINE ROUTES ---
+
 
 class KVWriteRequest(BaseModel):
     path: str
     data: dict[str, Any]
+
 
 @router.post("/kv/write", status_code=status.HTTP_201_CREATED)
 def kv_write(req: KVWriteRequest, token: str = Depends(get_token)):
@@ -209,6 +219,7 @@ def kv_write(req: KVWriteRequest, token: str = Depends(get_token)):
     except Exception as e:
         handle_common_exceptions(e)
 
+
 @router.get("/kv/list")
 def kv_list(token: str = Depends(get_token)):
     try:
@@ -216,6 +227,7 @@ def kv_list(token: str = Depends(get_token)):
         return {"secrets": secrets}
     except Exception as e:
         handle_common_exceptions(e)
+
 
 @router.get("/kv/read")
 def kv_read(path: str, token: str = Depends(get_token)):
@@ -225,6 +237,7 @@ def kv_read(path: str, token: str = Depends(get_token)):
     except Exception as e:
         handle_common_exceptions(e)
 
+
 @router.get("/kv/version/{version}")
 def kv_read_version(path: str, version: int, token: str = Depends(get_token)):
     try:
@@ -232,6 +245,7 @@ def kv_read_version(path: str, version: int, token: str = Depends(get_token)):
         return {"status": "success", "version": version, "data": data}
     except Exception as e:
         handle_common_exceptions(e)
+
 
 @router.delete("/kv/delete")
 def kv_delete(path: str, token: str = Depends(get_token)):
@@ -241,10 +255,13 @@ def kv_delete(path: str, token: str = Depends(get_token)):
     except Exception as e:
         handle_common_exceptions(e)
 
+
 # --- TRANSIT ENGINE ROUTES ---
+
 
 class CreateKeyRequest(BaseModel):
     key_name: str
+
 
 @router.post("/transit/keys", status_code=status.HTTP_201_CREATED)
 def transit_create_key(req: CreateKeyRequest, token: str = Depends(get_token)):
@@ -254,6 +271,7 @@ def transit_create_key(req: CreateKeyRequest, token: str = Depends(get_token)):
     except Exception as e:
         handle_transit_exceptions(e)
 
+
 @router.get("/transit/keys")
 def transit_list_keys(token: str = Depends(get_token)):
     try:
@@ -261,6 +279,7 @@ def transit_list_keys(token: str = Depends(get_token)):
         return {"keys": keys}
     except Exception as e:
         handle_transit_exceptions(e)
+
 
 @router.post("/transit/keys/{key_name}/rotate", status_code=status.HTTP_200_OK)
 def transit_rotate_key(key_name: str, token: str = Depends(get_token)):
@@ -270,6 +289,7 @@ def transit_rotate_key(key_name: str, token: str = Depends(get_token)):
     except Exception as e:
         handle_transit_exceptions(e)
 
+
 @router.delete("/transit/keys/{key_name}")
 def transit_revoke_key(key_name: str, token: str = Depends(get_token)):
     try:
@@ -278,9 +298,11 @@ def transit_revoke_key(key_name: str, token: str = Depends(get_token)):
     except Exception as e:
         handle_transit_exceptions(e)
 
+
 class EncryptRequest(BaseModel):
     key_name: str
     plaintext_b64: str
+
 
 @router.post("/transit/encrypt")
 def transit_encrypt(req: EncryptRequest, token: str = Depends(get_token)):
@@ -290,8 +312,10 @@ def transit_encrypt(req: EncryptRequest, token: str = Depends(get_token)):
     except Exception as e:
         handle_transit_exceptions(e)
 
+
 class DecryptRequest(BaseModel):
     ciphertext: str
+
 
 @router.post("/transit/decrypt")
 def transit_decrypt(req: DecryptRequest, token: str = Depends(get_token)):
@@ -301,11 +325,13 @@ def transit_decrypt(req: DecryptRequest, token: str = Depends(get_token)):
     except Exception as e:
         handle_transit_exceptions(e)
 
+
 class GrantRequest(BaseModel):
     resource_type: str
     resource_id: str
     grantee_email: str
     permissions: str
+
 
 @router.post("/acl/grant", status_code=status.HTTP_200_OK)
 def acl_grant(req: GrantRequest, token: str = Depends(get_token)):
@@ -317,9 +343,11 @@ def acl_grant(req: GrantRequest, token: str = Depends(get_token)):
     except Exception as e:
         handle_transit_exceptions(e)
 
+
 class CreateSigningKeyRequest(BaseModel):
     key_name: str
     signing_algorithm: SigningAlgorithm
+
 
 @router.post("/transit/signing-keys", status_code=status.HTTP_201_CREATED)
 def transit_create_signing_key(req: CreateSigningKeyRequest, token: str = Depends(get_token)):
@@ -329,6 +357,7 @@ def transit_create_signing_key(req: CreateSigningKeyRequest, token: str = Depend
     except Exception as e:
         handle_transit_exceptions(e)
 
+
 @router.get("/transit/signing-keys")
 def transit_list_signing_keys(token: str = Depends(get_token)):
     try:
@@ -337,10 +366,12 @@ def transit_list_signing_keys(token: str = Depends(get_token)):
     except Exception as e:
         handle_transit_exceptions(e)
 
+
 class SignRequest(BaseModel):
     key_name: str
     message_b64: str
     message_type: MessageType
+
 
 @router.post("/transit/sign")
 def transit_sign(req: SignRequest, token: str = Depends(get_token)):
@@ -350,19 +381,24 @@ def transit_sign(req: SignRequest, token: str = Depends(get_token)):
     except Exception as e:
         handle_transit_exceptions(e)
 
+
 class VerifyRequest(BaseModel):
     key_name: str
     message_b64: str
     message_type: MessageType
     signature_b64: str
 
+
 @router.post("/transit/verify")
 def transit_verify(req: VerifyRequest, token: str = Depends(get_token)):
     try:
-        res = transit_signing.verify(req.key_name, req.message_b64, req.message_type, req.signature_b64, token)
+        res = transit_signing.verify(
+            req.key_name, req.message_b64, req.message_type, req.signature_b64, token
+        )
         return {"status": "success", "data": res}
     except Exception as e:
         handle_transit_exceptions(e)
+
 
 # Include router on app root, /api, and /api/v1
 app.include_router(router)

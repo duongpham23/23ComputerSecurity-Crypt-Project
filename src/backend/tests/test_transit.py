@@ -187,6 +187,7 @@ class TestTransitVaultLocked:
     def test_create_key_locked(self, db_conn):
         """2.1 — create_key must raise VaultLocked when vault is locked."""
         from src.auth.session import login, register
+
         register("alice@example.com", "Passphrase123!")
         token = login("alice@example.com", "Passphrase123!")["token"]
         with pytest.raises(VaultLocked):
@@ -195,6 +196,7 @@ class TestTransitVaultLocked:
     def test_encrypt_locked(self, db_conn):
         """2.2 — encrypt must raise VaultLocked when vault is locked."""
         from src.auth.session import login, register
+
         try:
             register("alice@example.com", "Passphrase123!")
         except Exception:

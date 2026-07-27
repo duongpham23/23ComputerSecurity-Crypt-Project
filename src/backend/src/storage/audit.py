@@ -39,6 +39,6 @@ def log_action(action: str, actor_email: str, resource: str, detail: dict, resul
         """INSERT INTO audit_log
            (timestamp, actor_email, action, resource, result, detail, prev_hash, row_hash)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-        (now, actor_email, action, resource, result, detail_str, prev_hash, row_hash)
+        (now, actor_email, action, resource, result, detail_str, prev_hash, row_hash),
     )
     conn.commit()

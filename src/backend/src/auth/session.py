@@ -19,23 +19,26 @@ from src.storage.db import get_db
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-TOKEN_TTL_SECONDS     = 30 * 60          # 30-minute session lifetime
-LOCKOUT_MAX_ATTEMPTS  = 5                # wrong attempts before lockout
-LOCKOUT_DURATION      = 5 * 60          # lockout duration in seconds (5 min)
-MIN_PASSPHRASE_LENGTH = 12               # minimum passphrase length
+TOKEN_TTL_SECONDS = 30 * 60  # 30-minute session lifetime
+LOCKOUT_MAX_ATTEMPTS = 5  # wrong attempts before lockout
+LOCKOUT_DURATION = 5 * 60  # lockout duration in seconds (5 min)
+MIN_PASSPHRASE_LENGTH = 12  # minimum passphrase length
 
 
 # ---------------------------------------------------------------------------
 # Exceptions
 # ---------------------------------------------------------------------------
 
+
 class Unauthenticated(Exception):
     """Raised when a token is missing, malformed, or expired."""
+
     pass
 
 
 class AccountLocked(Exception):
     """Raised when the account is temporarily locked due to failed attempts."""
+
     def __init__(self, lock_until: float):
         super().__init__("ACCOUNT_LOCKED")
         self.lock_until = lock_until
@@ -43,12 +46,14 @@ class AccountLocked(Exception):
 
 class RegistrationError(Exception):
     """Raised on invalid registration input (generic — does not reveal email existence)."""
+
     pass
 
 
 # ---------------------------------------------------------------------------
 # Registration
 # ---------------------------------------------------------------------------
+
 
 def register(email: str, passphrase: str) -> dict:
     """
@@ -70,9 +75,7 @@ def register(email: str, passphrase: str) -> dict:
     password_hash = bcrypt.hashpw(passphrase.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
     conn = get_db()
-    existing = conn.execute(
-        "SELECT 1 FROM users WHERE email = ?", (email,)
-    ).fetchone()
+    existing = conn.execute("SELECT 1 FROM users WHERE email = ?", (email,)).fetchone()
 
     if existing:
         # Generic error — do not reveal that this specific email exists
@@ -92,6 +95,7 @@ def register(email: str, passphrase: str) -> dict:
 # ---------------------------------------------------------------------------
 # Login
 # ---------------------------------------------------------------------------
+
 
 def login(email: str, passphrase: str) -> dict:
     """
@@ -168,6 +172,7 @@ def login(email: str, passphrase: str) -> dict:
 # Token verification
 # ---------------------------------------------------------------------------
 
+
 def verify_token(token: str) -> str:
     """
     Verify a Bearer token and return the caller's email.
@@ -207,6 +212,7 @@ def verify_token(token: str) -> str:
 # Logout
 # ---------------------------------------------------------------------------
 
+
 def logout(token: str) -> None:
     """Invalidate the session token (safe to call even if token is already gone)."""
     clean = token.strip()
@@ -221,6 +227,7 @@ def logout(token: str) -> None:
 # Legacy stub kept for test compatibility
 # (conftest.py mocks this module, so tests are unaffected)
 # ---------------------------------------------------------------------------
+
 
 def issue_token(email: str) -> str:
     """Deprecated stub — use login() instead. Kept so conftest mock still works."""

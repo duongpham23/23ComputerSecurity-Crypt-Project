@@ -74,7 +74,8 @@ def _check_ownership(path: str, caller_email: str) -> None:
     if path_email != caller_email:
         # Check if they have an ACL grant
         from src.transit.acl import check_grant
-        if not check_grant('kv', path, caller_email):
+
+        if not check_grant("kv", path, caller_email):
             raise PermissionDenied("PERMISSION_DENIED")
 
 
@@ -106,7 +107,9 @@ def _decrypt(dek: bytes, nonce: bytes, ciphertext: bytes, tag: bytes) -> bytes:
     try:
         return aesgcm.decrypt(nonce, ct_with_tag, None)
     except Exception as exc:
-        raise TagMismatch("GCM authentication tag mismatch — data may have been tampered with") from exc
+        raise TagMismatch(
+            "GCM authentication tag mismatch — data may have been tampered with"
+        ) from exc
 
 
 # ---------------------------------------------------------------------------
@@ -162,9 +165,7 @@ def write(path: str, data: dict, token: str) -> dict:
         created_at = existing["created_at"]
 
         # Archive old version into kv_versions (for extra-credit versioning)
-        old = conn.execute(
-            "SELECT * FROM kv_secrets WHERE path = ?", (path,)
-        ).fetchone()
+        old = conn.execute("SELECT * FROM kv_secrets WHERE path = ?", (path,)).fetchone()
         conn.execute(
             """INSERT INTO kv_versions
                (path, owner_email, nonce_b64, ciphertext_b64, tag_b64, version, created_at)

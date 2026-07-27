@@ -10,7 +10,9 @@ from src.auth.session import verify_token
 from src.storage.db import get_db
 
 
-def grant_access(resource_type: str, resource_id: str, grantee_email: str, permissions: str, token: str) -> dict:
+def grant_access(
+    resource_type: str, resource_id: str, grantee_email: str, permissions: str, token: str
+) -> dict:
     """
     Grant access to a specific resource to another user.
 
@@ -21,7 +23,7 @@ def grant_access(resource_type: str, resource_id: str, grantee_email: str, permi
         permissions: Comma-separated list of permissions, e.g., 'READ,WRITE'
         token: Session token of the resource owner.
     """
-    if resource_type not in ('kv', 'transit'):
+    if resource_type not in ("kv", "transit"):
         raise ValueError("Invalid resource_type")
 
     caller_email = verify_token(token)
@@ -35,33 +37,39 @@ def grant_access(resource_type: str, resource_id: str, grantee_email: str, permi
     # Check if a grant already exists and update, or insert new
     existing = conn.execute(
         "SELECT id FROM acl_grants WHERE resource_type = ? AND resource_id = ? AND owner_email = ? AND grantee_email = ?",
-        (resource_type, resource_id, caller_email, grantee_email)
+        (resource_type, resource_id, caller_email, grantee_email),
     ).fetchone()
 
     now = time.time()
     if existing:
         conn.execute(
             "UPDATE acl_grants SET permissions = ?, granted_at = ? WHERE id = ?",
-            (permissions, now, existing["id"])
+            (permissions, now, existing["id"]),
         )
     else:
         conn.execute(
             """INSERT INTO acl_grants
                (resource_type, resource_id, owner_email, grantee_email, permissions, granted_at)
                VALUES (?, ?, ?, ?, ?, ?)""",
-            (resource_type, resource_id, caller_email, grantee_email, permissions, now)
+            (resource_type, resource_id, caller_email, grantee_email, permissions, now),
         )
     conn.commit()
 
     from src.storage.audit import log_action
+
     log_action(
         action="ACL_GRANT",
         actor_email=caller_email,
         resource=resource_id,
-        detail={"grantee": grantee_email, "permissions": permissions, "resource_type": resource_type}
+        detail={
+            "grantee": grantee_email,
+            "permissions": permissions,
+            "resource_type": resource_type,
+        },
     )
 
     return {"status": "success"}
+
 
 def check_grant(resource_type: str, resource_id: str, grantee_email: str) -> bool:
     """
@@ -70,7 +78,7 @@ def check_grant(resource_type: str, resource_id: str, grantee_email: str) -> boo
     conn = get_db()
     row = conn.execute(
         "SELECT id FROM acl_grants WHERE resource_type = ? AND resource_id = ? AND grantee_email = ?",
-        (resource_type, resource_id, grantee_email)
+        (resource_type, resource_id, grantee_email),
     ).fetchone()
 
     return row is not None

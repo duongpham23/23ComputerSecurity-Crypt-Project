@@ -19,6 +19,7 @@ from src.auth.session import (
 # Helper: register a fresh user (email unique per test via tmp_path)
 # ---------------------------------------------------------------------------
 
+
 def _reg(email: str, passphrase: str = "StrongPass123!") -> dict:
     return register(email, passphrase)
 
@@ -26,6 +27,7 @@ def _reg(email: str, passphrase: str = "StrongPass123!") -> dict:
 # ---------------------------------------------------------------------------
 # Registration tests
 # ---------------------------------------------------------------------------
+
 
 class TestRegistration:
     def test_register_success(self, db_conn):
@@ -65,6 +67,7 @@ class TestRegistration:
 # Login tests
 # ---------------------------------------------------------------------------
 
+
 class TestLogin:
     def test_login_success(self, db_conn):
         """0.2 — correct credentials return a token and expiry."""
@@ -103,6 +106,7 @@ class TestLogin:
 # Token verification tests
 # ---------------------------------------------------------------------------
 
+
 class TestVerifyToken:
     def test_valid_token_returns_email(self, db_conn):
         """0.2 — verify_token returns the owner email for a valid token."""
@@ -137,6 +141,7 @@ class TestVerifyToken:
 # ---------------------------------------------------------------------------
 # Account lockout tests — mandatory per spec
 # ---------------------------------------------------------------------------
+
 
 class TestAccountLockout:
     def test_five_wrong_attempts_lock_account(self, db_conn):
@@ -195,6 +200,7 @@ class TestAccountLockout:
 # ---------------------------------------------------------------------------
 # Logout tests
 # ---------------------------------------------------------------------------
+
 
 class TestLogout:
     def test_logout_invalidates_token(self, db_conn):
