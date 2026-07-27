@@ -1,0 +1,81 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./src/backend
+      dockerfile_inline: |
+        FROM python:3.11-slim AS builder
+
+        WORKDIR /app
+
+        RUN apt-get update && apt-get install -y --no-install-recommends \
+                gcc \
+                libffi-dev \
+                libssl-dev \
+            && rm -rf /var/lib/apt/lists/*
+
+        RUN pip install --upgrade pip setuptools wheel
+
+        COPY requirements.txt ./
+        RUN mkdir -p /install && pip install --prefix=/install --no-cache-dir -r requirements.txt
+
+        FROM python:3.11-slim AS runtime
+
+        WORKDIR /app
+
+        COPY --from=builder /install /usr/local
+
+        EXPOSE 8000
+
+        # --reload watches for source changes and restarts Uvicorn automatically.
+        CMD ["python", "-m", "uvicorn", "main:app", \
+             "--host", "0.0.0.0", \
+             "--port", "8000", \
+             "--reload"]
+    container_name: minivault-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./src/backend:/app
+      - vault-data:/app/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request, sys; r = urllib.request.urlopen('http://localhost:8000/health', timeout=4); sys.exit(0 if r.status == 200 else 1)"]
+      interval: 15s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
+  frontend:
+    build:
+      context: ./src/frontend
+      dockerfile_inline: |
+        FROM node:22-alpine
+
+        WORKDIR /app
+
+        RUN corepack enable && corepack prepare pnpm@9 --activate
+
+        # Copy the manifests here to keep the image layer cacheable.
+        COPY package.json pnpm-workspace.yaml* ./
+        RUN pnpm install --no-frozen-lockfile
+
+        EXPOSE 5173
+
+        CMD ["pnpm", "dev", "--host", "0.0.0.0", "--port", "5173"]
+    container_name: minivault-frontend
+    restart: unless-stopped
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_BACKEND_URL=http://backend:8000
+    volumes:
+      - ./src/frontend:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+
+volumes:
+  vault-data:
+    driver: local
