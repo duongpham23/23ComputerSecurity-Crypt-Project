@@ -12,7 +12,7 @@ import time
 from src.auth.session import verify_token
 from src.core.vault import get_dek
 from src.storage.db import get_db
-from src.transit.keys import _encrypt_with_dek, _check_key_ownership
+from src.transit.keys import _check_key_ownership, _encrypt_with_dek
 
 
 def rotate_key(key_name: str, token: str) -> dict:
@@ -32,7 +32,7 @@ def rotate_key(key_name: str, token: str) -> dict:
 
     # Verify ownership and get current latest version
     old_key = _check_key_ownership(key_name, caller_email)
-    
+
     if old_key["key_usage"] != "ENCRYPT_DECRYPT":
         raise ValueError("Only ENCRYPT_DECRYPT keys can be rotated")
 
@@ -44,7 +44,7 @@ def rotate_key(key_name: str, token: str) -> dict:
 
     conn = get_db()
     now = time.time()
-    
+
     conn.execute(
         """INSERT INTO transit_keys
            (key_name, owner_email, key_usage, signing_algorithm,

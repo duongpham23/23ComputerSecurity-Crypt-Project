@@ -1,9 +1,11 @@
 """tests/test_auth.py — Feature 0.2: User authentication tests."""
 
 import time
+
 import pytest
 
 from src.auth.session import (
+    LOCKOUT_MAX_ATTEMPTS,
     AccountLocked,
     RegistrationError,
     Unauthenticated,
@@ -11,11 +13,7 @@ from src.auth.session import (
     logout,
     register,
     verify_token,
-    LOCKOUT_MAX_ATTEMPTS,
-    LOCKOUT_DURATION,
-    TOKEN_TTL_SECONDS,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helper: register a fresh user (email unique per test via tmp_path)

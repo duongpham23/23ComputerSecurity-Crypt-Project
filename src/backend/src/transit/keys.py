@@ -115,7 +115,7 @@ def _check_key_ownership(key_name: str, caller_email: str, version: int | None =
     from src.kv.engine import PermissionDenied
 
     conn = get_db()
-    
+
     # We first verify ownership of ANY version of this key to distinguish NotFound from PermissionDenied
     any_row = conn.execute(
         "SELECT owner_email FROM transit_keys WHERE key_name = ? LIMIT 1",

@@ -8,26 +8,37 @@ Run with:
 import time
 from contextlib import asynccontextmanager
 from typing import Any
-from fastapi import FastAPI, Depends, HTTPException, status, APIRouter, Response
+
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer
 from pydantic import BaseModel
 
-from src.storage.db import init_db
+from src.auth.session import (
+    AccountLocked,
+    RegistrationError,
+    Unauthenticated,
+)
+from src.auth.session import (
+    login as auth_login,
+)
+from src.auth.session import (
+    logout as auth_logout,
+)
+from src.auth.session import (
+    register as auth_register,
+)
+from src.core.vault import VaultLocked, init_vault, is_initialized, is_unlocked, unlock_vault
 from src.kv import engine as kv_engine
 from src.kv import versioning as kv_versioning
-from src.core.vault import VaultLocked, is_unlocked, is_initialized, init_vault, unlock_vault
-from src.auth.session import (
-    Unauthenticated, AccountLocked, RegistrationError,
-    register as auth_register, login as auth_login, logout as auth_logout,
-)
-from src.kv.engine import PermissionDenied, NotFound, TagMismatch
-from src.transit import keys as transit_keys
-from src.transit import crypto as transit_crypto
-from src.transit import signing as transit_signing
-from src.transit import rotation as transit_rotation
+from src.kv.engine import NotFound, PermissionDenied, TagMismatch
+from src.storage.db import init_db
 from src.transit import acl as vault_acl
-from src.transit.keys import InvalidKeyUsage, KeyNotFound, KeyAlreadyExists
+from src.transit import crypto as transit_crypto
+from src.transit import keys as transit_keys
+from src.transit import rotation as transit_rotation
+from src.transit import signing as transit_signing
+from src.transit.keys import InvalidKeyUsage, KeyAlreadyExists, KeyNotFound
 from src.transit.signing import MessageType, SigningAlgorithm
 
 

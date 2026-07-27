@@ -1,19 +1,16 @@
-import os
-import time
-import json
 import base64
+import json
+import os
 import shutil
-import sys
-from pathlib import Path
 
 # --- Set up data directory ---
 samples_dir = os.path.join(os.path.dirname(__file__), "data", "samples")
 os.makedirs(samples_dir, exist_ok=True)
 os.environ["VAULT_DATA_DIR"] = samples_dir
 
-import src.storage.db as db_mod
-import src.core.vault as vault_mod
-from src.auth.session import register, login
+import src.core.vault as vault_mod  # noqa: E402
+import src.storage.db as db_mod  # noqa: E402
+from src.auth.session import login, register  # noqa: E402
 
 # Force re-init of db
 db_mod._local.__dict__.clear()
@@ -35,15 +32,15 @@ session = login("alice@example.com", "AlicePassphrase123!")
 token = session["token"]
 
 # --- 1. KV Engine Sample Data ---
-from src.kv import engine as kv_engine
+from src.kv import engine as kv_engine  # noqa: E402
 
 kv_engine.write("secret/alice@example.com/db_creds", {"username": "admin", "password": "supersecret"}, token)
 kv_engine.write("secret/alice@example.com/api_keys", {"aws": "AKIA...", "stripe": "sk_test..."}, token)
 
 # --- 2. Transit Engine Sample Data ---
-from src.transit import keys as transit_keys
-from src.transit import crypto as transit_crypto
-from src.transit import signing as transit_signing
+from src.transit import crypto as transit_crypto  # noqa: E402
+from src.transit import keys as transit_keys  # noqa: E402
+from src.transit import signing as transit_signing  # noqa: E402
 
 try:
     transit_keys.create_key("my-app-key", token)

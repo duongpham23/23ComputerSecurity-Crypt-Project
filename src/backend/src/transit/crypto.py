@@ -15,7 +15,6 @@ from src.auth.session import verify_token
 from src.core.vault import get_dek
 from src.transit.keys import (
     InvalidKeyUsage,
-    KeyNotFound,
     _check_key_ownership,
     _decrypt_with_dek,
 )
@@ -95,7 +94,7 @@ def decrypt(ciphertext: str, token: str) -> str:
 
     if not version_str.startswith("v"):
         raise ValueError("MALFORMED_CIPHERTEXT: invalid version string")
-    
+
     try:
         key_version = int(version_str[1:])
     except ValueError:

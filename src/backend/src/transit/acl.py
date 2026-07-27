@@ -5,8 +5,10 @@ Allows complex ACL grants for cross-user resource sharing (KV and Transit).
 """
 
 import time
+
 from src.auth.session import verify_token
 from src.storage.db import get_db
+
 
 def grant_access(resource_type: str, resource_id: str, grantee_email: str, permissions: str, token: str) -> dict:
     """
@@ -29,7 +31,7 @@ def grant_access(resource_type: str, resource_id: str, grantee_email: str, permi
     # they must be the owner to grant it.
 
     conn = get_db()
-    
+
     # Check if a grant already exists and update, or insert new
     existing = conn.execute(
         "SELECT id FROM acl_grants WHERE resource_type = ? AND resource_id = ? AND owner_email = ? AND grantee_email = ?",
@@ -44,7 +46,7 @@ def grant_access(resource_type: str, resource_id: str, grantee_email: str, permi
         )
     else:
         conn.execute(
-            """INSERT INTO acl_grants 
+            """INSERT INTO acl_grants
                (resource_type, resource_id, owner_email, grantee_email, permissions, granted_at)
                VALUES (?, ?, ?, ?, ?, ?)""",
             (resource_type, resource_id, caller_email, grantee_email, permissions, now)
@@ -70,5 +72,5 @@ def check_grant(resource_type: str, resource_id: str, grantee_email: str) -> boo
         "SELECT id FROM acl_grants WHERE resource_type = ? AND resource_id = ? AND grantee_email = ?",
         (resource_type, resource_id, grantee_email)
     ).fetchone()
-    
+
     return row is not None

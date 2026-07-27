@@ -21,7 +21,6 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
     Ed25519PrivateKey,
     Ed25519PublicKey,
 )
-from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateKey, RSAPublicKey
 
 from src.auth.session import verify_token
 from src.core.vault import get_dek
@@ -29,7 +28,6 @@ from src.storage.db import get_db
 from src.transit.keys import (
     InvalidKeyUsage,
     KeyAlreadyExists,
-    KeyNotFound,
     _check_key_ownership,
     _decrypt_with_dek,
     _encrypt_with_dek,

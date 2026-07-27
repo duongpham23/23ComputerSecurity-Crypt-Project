@@ -2,11 +2,10 @@
 
 import base64
 import json
-import os
+
 import pytest
 
 import src.core.vault as vault_mod
-
 
 # ---------------------------------------------------------------------------
 # Helper: reset vault state between tests

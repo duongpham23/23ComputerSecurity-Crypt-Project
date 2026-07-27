@@ -4,13 +4,10 @@ import base64
 
 import pytest
 
-from src.auth.session import Unauthenticated
 from src.core.vault import VaultLocked
-from src.transit.keys import InvalidKeyUsage, KeyAlreadyExists, KeyNotFound, create_key, revoke_key
 from src.transit.crypto import decrypt, encrypt
+from src.transit.keys import InvalidKeyUsage, KeyAlreadyExists, KeyNotFound, create_key, revoke_key
 from src.transit.signing import (
-    MessageType,
-    SigningAlgorithm,
     create_signing_key,
     sign,
     verify,
@@ -189,7 +186,7 @@ class TestTransitSignVerify:
 class TestTransitVaultLocked:
     def test_create_key_locked(self, db_conn):
         """2.1 — create_key must raise VaultLocked when vault is locked."""
-        from src.auth.session import register, login
+        from src.auth.session import login, register
         register("alice@example.com", "Passphrase123!")
         token = login("alice@example.com", "Passphrase123!")["token"]
         with pytest.raises(VaultLocked):
@@ -197,10 +194,10 @@ class TestTransitVaultLocked:
 
     def test_encrypt_locked(self, db_conn):
         """2.2 — encrypt must raise VaultLocked when vault is locked."""
-        from src.auth.session import register, login
+        from src.auth.session import login, register
         try:
             register("alice@example.com", "Passphrase123!")
-        except:
+        except Exception:
             pass
         token = login("alice@example.com", "Passphrase123!")["token"]
         with pytest.raises(VaultLocked):

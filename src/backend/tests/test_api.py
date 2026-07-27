@@ -1,5 +1,5 @@
 import base64
-import pytest
+
 from fastapi.testclient import TestClient
 
 from main import app
@@ -249,7 +249,7 @@ def test_audit_log(unlocked_vault, alice_token, bob_token):
         json={"key_name": "audit-test"}
     )
     assert res.status_code == 201, res.text
-    
+
     # 2. Grant ACL to trigger audit log
     res = client.post(
         "/acl/grant",
@@ -265,15 +265,15 @@ def test_audit_log(unlocked_vault, alice_token, bob_token):
 
     from src.storage.db import get_db
     conn = get_db()
-    
+
     logs = conn.execute("SELECT * FROM audit_log ORDER BY id ASC").fetchall()
-    
+
     # There should be at least 2 logs now
     assert len(logs) >= 2
-    
+
     # Check chaining of the last two
     last_log = logs[-1]
     prev_log = logs[-2]
-    
+
     assert last_log["prev_hash"] == prev_log["row_hash"]
     assert last_log["action"] == "ACL_GRANT"

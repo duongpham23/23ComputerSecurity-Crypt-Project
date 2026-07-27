@@ -6,14 +6,14 @@ The write() function in kv/engine.py already pushes old versions to the
 kv_versions table automatically.
 """
 
+import base64
 import json
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-import base64
 
 from src.auth.session import verify_token
 from src.core.vault import get_dek
-from src.kv.engine import _check_ownership, NotFound, TagMismatch
+from src.kv.engine import NotFound, TagMismatch, _check_ownership
 from src.storage.db import get_db
 
 
@@ -39,7 +39,7 @@ def read_version(path: str, version: int, token: str) -> dict:
     _check_ownership(path, caller_email)
 
     conn = get_db()
-    
+
     # Check if the requested version is currently the active one in kv_secrets
     active_row = conn.execute(
         "SELECT nonce_b64, ciphertext_b64, tag_b64 FROM kv_secrets WHERE path = ? AND version = ?",

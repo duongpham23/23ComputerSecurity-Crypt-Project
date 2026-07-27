@@ -2,12 +2,10 @@
 conftest.py — shared pytest fixtures for all test modules.
 """
 
-import os
 import pytest
-import time
 
 import src.core.vault as vault_mod
-from src.auth.session import register, login
+from src.auth.session import login, register
 
 
 @pytest.fixture(autouse=True)

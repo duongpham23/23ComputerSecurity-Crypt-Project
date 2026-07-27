@@ -2,6 +2,7 @@
 
 import pytest
 
+from src.core.vault import VaultLocked
 from src.kv.engine import (
     NotFound,
     PermissionDenied,
@@ -10,7 +11,6 @@ from src.kv.engine import (
     read,
     write,
 )
-from src.core.vault import VaultLocked
 
 
 class TestKVWriteRead:
@@ -100,7 +100,7 @@ class TestKVAccessControl:
 class TestKVVaultLocked:
     def test_write_while_locked_raises(self, db_conn):
         """1.1 — write must raise VaultLocked when the vault is not unlocked."""
-        from src.auth.session import register, login
+        from src.auth.session import login, register
         register("alice@example.com", "Passphrase123!")
         token = login("alice@example.com", "Passphrase123!")["token"]
         with pytest.raises(VaultLocked):
@@ -108,10 +108,10 @@ class TestKVVaultLocked:
 
     def test_read_while_locked_raises(self, db_conn):
         """1.1 — read must raise VaultLocked when the vault is not unlocked."""
-        from src.auth.session import register, login
+        from src.auth.session import login, register
         try:
             register("alice@example.com", "Passphrase123!")
-        except:
+        except Exception:
             pass
         token = login("alice@example.com", "Passphrase123!")["token"]
         with pytest.raises(VaultLocked):
