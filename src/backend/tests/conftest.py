@@ -25,7 +25,7 @@ def _reset_vault(vault_data_dir):
     vault_mod._unlocked = False
 
 
-@pytest.fixture()
+@pytest.fixture(autouse=True)
 def db_conn(vault_data_dir):
     """Isolated SQLite connection for each test."""
     import src.storage.db as db
