@@ -310,4 +310,12 @@ def revoke_key(key_name: str, token: str) -> dict:
     )
     conn.commit()
 
+    from src.storage.audit import log_action
+    log_action(
+        action="REVOKE_KEY",
+        actor_email=caller_email,
+        resource=key_name,
+        detail={},
+    )
+
     return {"revoked": True, "key_name": key_name}

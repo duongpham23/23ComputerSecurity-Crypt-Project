@@ -185,6 +185,9 @@ def init_vault(passphrase: str) -> None:
     _dek = dek
     _unlocked = True
 
+    from src.storage.audit import log_action
+    log_action("VAULT_INITIALIZED", "system", "vault", {})
+
 
 def unlock_vault(passphrase: str) -> None:
     """
@@ -212,9 +215,15 @@ def unlock_vault(passphrase: str) -> None:
     _dek = dek
     _unlocked = True
 
+    from src.storage.audit import log_action
+    log_action("VAULT_UNLOCKED", "system", "vault", {})
+
 
 def lock_vault() -> None:
     """Clear the DEK from memory, transitioning the vault to locked state."""
     global _dek, _unlocked
     _dek = None
     _unlocked = False
+
+    from src.storage.audit import log_action
+    log_action("VAULT_LOCKED", "system", "vault", {})

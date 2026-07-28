@@ -2,8 +2,9 @@ import React, { useState, useEffect, useCallback } from "react";
 import { setToken, ApiError } from "@/api/client";
 import { useUI } from "@/context/UIContext";
 import { vaultInit, vaultUnlock, register, login, vaultStatus } from "@/api/auth";
-import { writeSecret, readSecret, deleteSecret, listSecrets } from "@/api/kv";
-import { createEncryptKey, encrypt, decrypt, listEncryptKeys, revokeEncryptKey } from "@/api/transitEncrypt";
+import { writeSecret, readSecret, deleteSecret, listSecrets, readSecretVersion } from "@/api/kv";
+import { createEncryptKey, encrypt, decrypt, listEncryptKeys, revokeEncryptKey, rotateEncryptKey } from "@/api/transitEncrypt";
+import { grantAccess } from "@/api/acl";
 import { createSignKey, signMessage, verifySignature, listSignKeys, revokeSignKey } from "@/api/transitSign";
 import { listAuditEvents, AuditEvent } from "@/api/auth";
 
@@ -13,7 +14,7 @@ import { listAuditEvents, AuditEvent } from "@/api/auth";
 
 export interface Toast { id: string; message: string; type: "error" | "success" | "info"; }
 export interface CritModal { title: string; body: string; confirmLabel: string; variant: "black" | "red"; onConfirm: () => void; }
-export interface KVEntry { path: string; value: string; ts: string; }
+export interface KVEntry { path: string; value: string; ts: string; is_shared?: boolean; }
 export interface VKey { name: string; kind: "enc" | "sign"; algorithm: string; version: number; revoked: boolean; ts: string; }
 export interface User { email: string; }
 export interface AuditRow { ts: string; user: string; action: string; target: string; status: "OK" | "DENIED" | "FAIL"; }
@@ -69,7 +70,11 @@ export function sanitize(s: string) {
 }
 export function isEmail(s: string) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s) && s.length <= 256; }
 export function isKeyName(s: string) { return /^[a-zA-Z0-9_-]{1,64}$/.test(s); }
-export function isValidPath(p: string, email: string) { return /^[a-zA-Z0-9/_@.-]{1,256}$/.test(p) && p.startsWith(`secret/${email}/`); }
+export function isValidPath(p: string, email?: string) {
+  const validFormat = /^[a-zA-Z0-9/_@.-]{1,256}$/.test(p) && p.startsWith("secret/");
+  if (!email) return validFormat;
+  return validFormat && p.startsWith(`secret/${email}/`);
+}
 
 export function passStrength(p: string) {
   let s = 0;
@@ -553,14 +558,16 @@ export const SELECT_STYLE: React.CSSProperties = {
 // ─── KV Panel ──────────────────────────────────────────────────────────────────
 
 export function KVPanel({ user, addToast, showCrit }: { user: User; addToast: (m: string, t: Toast["type"]) => void; showCrit: (m: CritModal) => void }) {
-  const [mode, setMode] = useState<"read" | "write" | "delete">("read");
+  const [mode, setMode] = useState<"read" | "write" | "delete" | "share">("read");
   const [path, setPath] = useState(`secret/${user.email}/`);
   const [payload, setPayload] = useState("");
+  const [versionStr, setVersionStr] = useState("");
+  const [granteeEmail, setGranteeEmail] = useState("");
   const [result, setResult] = useState<string | null>(null);
   const [entries, setEntries] = useState<KVEntry[]>([]);
 
   useEffect(() => {
-    listSecrets().then(res => setEntries(res.secrets.map((s: any) => ({ path: s.path, value: "", ts: s.updated_at }))))
+    listSecrets().then(res => setEntries(res.secrets.map((s: any) => ({ path: s.path, value: "", ts: s.updated_at, is_shared: s.is_shared }))))
                  .catch(err => addToast(err.message, "error"));
   }, [addToast]);
 
@@ -573,15 +580,32 @@ export function KVPanel({ user, addToast, showCrit }: { user: User; addToast: (m
       await writeSecret(p, parsed);
       setResult(`Written to: ${p}`); addToast(`SECRET STORED: ${p}`, "success"); setPayload("");
       const res = await listSecrets();
-      setEntries(res.secrets.map((s: any) => ({ path: s.path, value: "", ts: s.updated_at })));
+      setEntries(res.secrets.map((s: any) => ({ path: s.path, value: "", ts: s.updated_at, is_shared: s.is_shared })));
     } catch (err: any) { addToast(err.message, "error"); }
   }
   async function doRead() {
     const p = sanitize(path.trim());
-    if (!isValidPath(p, user.email)) { addToast("PERMISSION_DENIED", "error"); return; }
+    if (!isValidPath(p)) { addToast("INVALID PATH FORMAT", "error"); return; }
     try {
-      const data = await readSecret(p);
+      let data;
+      if (versionStr) {
+        const v = parseInt(versionStr, 10);
+        if (isNaN(v) || v < 1) { addToast("INVALID VERSION", "error"); return; }
+        data = await readSecretVersion(p, v);
+      } else {
+        data = await readSecret(p);
+      }
       setResult(JSON.stringify(data.value, null, 2));
+    } catch (err: any) { addToast(err.message, "error"); }
+  }
+  async function doShare() {
+    const p = sanitize(path.trim());
+    const email = sanitize(granteeEmail.trim());
+    if (!email) { addToast("GRANTEE EMAIL REQUIRED", "error"); return; }
+    try {
+      await grantAccess("kv", p, email, "READ");
+      addToast(`SHARED ${p} WITH ${email}`, "success");
+      setGranteeEmail("");
     } catch (err: any) { addToast(err.message, "error"); }
   }
   async function doDelete() {
@@ -592,7 +616,7 @@ export function KVPanel({ user, addToast, showCrit }: { user: User; addToast: (m
           await deleteSecret(p);
           setResult(null); addToast(`SECRET DELETED: ${p}`, "success"); 
           const res = await listSecrets();
-          setEntries(res.secrets.map((s: any) => ({ path: s.path, value: "", ts: s.updated_at })));
+          setEntries(res.secrets.map((s: any) => ({ path: s.path, value: "", ts: s.updated_at, is_shared: s.is_shared })));
         } catch(err: any) { addToast(err.message, "error"); }
     } });
   }
@@ -602,7 +626,7 @@ export function KVPanel({ user, addToast, showCrit }: { user: User; addToast: (m
       <div className="flex-shrink-0 flex items-center px-8 py-4 gap-4" style={{ borderBottom: `1px solid ${C.border}`, backgroundColor: C.surface }}>
         <p style={{ fontFamily: MINCHO, fontSize: 20, fontWeight: 700, letterSpacing: 2, color: C.text }}>KV ENGINE</p>
         <div className="ml-auto flex gap-1">
-          {(["read", "write", "delete"] as const).map((m) => (
+          {(["read", "write", "delete", "share"] as const).map((m) => (
             <button key={m} onClick={() => { setMode(m); setResult(null); }} style={{
               fontFamily: GOTHIC, fontSize: 11, fontWeight: 900, letterSpacing: 2, textTransform: "uppercase",
               padding: "8px 16px", cursor: "pointer", border: "none", borderRadius: 0,
@@ -615,14 +639,16 @@ export function KVPanel({ user, addToast, showCrit }: { user: User; addToast: (m
       <div className="flex flex-1 overflow-hidden">
         <div className="flex flex-col overflow-y-auto p-8" style={{ width: "50%", borderRight: `1px solid ${C.border}`, backgroundColor: C.surface }}>
           <VInput label="Secret Path" value={path} onChange={setPath} placeholder={`secret/${user.email}/mykey`} />
+          {mode === "read" && <VInput label="Version (Optional)" value={versionStr} onChange={setVersionStr} placeholder="e.g. 1" type="number" />}
           {mode === "write" && <VTextarea label="JSON Payload" value={payload} onChange={setPayload} placeholder='{"key": "value"}' rows={6} />}
+          {mode === "share" && <VInput label="Grantee Email" value={granteeEmail} onChange={setGranteeEmail} placeholder="bob@example.com" type="email" />}
           <HoverBtn
             bg={mode === "delete" ? "transparent" : C.red}
             color={mode === "delete" ? C.red : "#000"}
             border={mode === "delete" ? `2px solid ${C.red}` : undefined}
-            onClick={mode === "write" ? doWrite : mode === "read" ? doRead : doDelete}
+            onClick={mode === "write" ? doWrite : mode === "read" ? doRead : mode === "share" ? doShare : doDelete}
             fullWidth>
-            {mode === "write" ? "STORE SECRET" : mode === "read" ? "RETRIEVE SECRET" : "DESTROY SECRET"}
+            {mode === "write" ? "STORE SECRET" : mode === "read" ? "RETRIEVE SECRET" : mode === "share" ? "SHARE SECRET" : "DESTROY SECRET"}
           </HoverBtn>
           {result && (
             <div style={{ marginTop: 32, border: `1px solid ${C.border}`, padding: 16, backgroundColor: C.appBg }}>
@@ -632,14 +658,27 @@ export function KVPanel({ user, addToast, showCrit }: { user: User; addToast: (m
           )}
         </div>
         <div className="overflow-y-auto p-8" style={{ width: "50%", backgroundColor: C.appBg }}>
-          <p style={{ fontFamily: GOTHIC, fontSize: 10, fontWeight: 900, letterSpacing: 2, color: C.subdued, marginBottom: 16 }}>STORED SECRETS ({entries.length})</p>
-          {entries.map((e) => (
+          <p style={{ fontFamily: GOTHIC, fontSize: 10, fontWeight: 900, letterSpacing: 2, color: C.subdued, marginBottom: 16 }}>STORED SECRETS ({entries.filter(e => !e.is_shared).length})</p>
+          {entries.filter(e => !e.is_shared).map((e) => (
             <div key={e.path} onClick={() => setPath(e.path)}
               style={{ border: `1px solid ${C.border}`, backgroundColor: C.surface, padding: "12px 16px", marginBottom: 8, cursor: "pointer" }}
               onMouseEnter={(ev) => ev.currentTarget.style.borderColor = C.red}
               onMouseLeave={(ev) => ev.currentTarget.style.borderColor = C.border}>
               <div className="flex items-center gap-2 mb-1">
                 <div style={{ width: 4, height: 4, backgroundColor: C.red, flexShrink: 0 }} />
+                <p style={{ fontFamily: GOTHIC, fontSize: 13, fontWeight: 700, color: C.text }}>{e.path}</p>
+              </div>
+              <p style={{ fontFamily: GOTHIC, fontSize: 11, color: C.subdued, paddingLeft: 12 }}>{new Date(e.ts).toLocaleString()}</p>
+            </div>
+          ))}
+          <p style={{ fontFamily: GOTHIC, fontSize: 10, fontWeight: 900, letterSpacing: 2, color: C.subdued, marginBottom: 16, marginTop: 24 }}>SHARED WITH ME ({entries.filter(e => e.is_shared).length})</p>
+          {entries.filter(e => e.is_shared).map((e) => (
+            <div key={e.path} onClick={() => setPath(e.path)}
+              style={{ border: `1px solid ${C.border}`, backgroundColor: C.surface, padding: "12px 16px", marginBottom: 8, cursor: "pointer" }}
+              onMouseEnter={(ev) => ev.currentTarget.style.borderColor = C.blue}
+              onMouseLeave={(ev) => ev.currentTarget.style.borderColor = C.border}>
+              <div className="flex items-center gap-2 mb-1">
+                <div style={{ width: 4, height: 4, backgroundColor: C.blue, flexShrink: 0 }} />
                 <p style={{ fontFamily: GOTHIC, fontSize: 13, fontWeight: 700, color: C.text }}>{e.path}</p>
               </div>
               <p style={{ fontFamily: GOTHIC, fontSize: 11, color: C.subdued, paddingLeft: 12 }}>{new Date(e.ts).toLocaleString()}</p>
@@ -690,6 +729,14 @@ export function TransitEncPanel({ user, addToast, showCrit }: { user: User; addT
         setKeys(res.keys as any);
       } catch(err: any) { addToast(err.message, "error"); }
     } });
+  }
+  async function rotateKey(name: string) {
+    try {
+      await rotateEncryptKey(name);
+      addToast(`KEY ROTATED: ${name}`, "success");
+      const res = await listEncryptKeys();
+      setKeys(res.keys as any);
+    } catch(err: any) { addToast(err.message, "error"); }
   }
   async function doEncrypt() {
     if (!selKey) { addToast("SELECT A KEY", "error"); return; }
@@ -743,7 +790,12 @@ export function TransitEncPanel({ user, addToast, showCrit }: { user: User; addT
                   <p style={{ fontFamily: GOTHIC, fontSize: 13, fontWeight: 700, color: C.text }}>{k.name}</p>
                   <p style={{ fontFamily: GOTHIC, fontSize: 11, color: C.subdued, marginTop: 2 }}>{k.algorithm} · v{k.version} · {k.revoked ? "REVOKED" : "ACTIVE"} · PRIVATE KEY SEALED</p>
                 </div>
-                {!k.revoked && <button onClick={() => revokeKey(k.name)} style={{ fontFamily: GOTHIC, fontSize: 10, fontWeight: 900, letterSpacing: 1, color: C.red, background: "none", border: "none", cursor: "pointer" }}>REVOKE</button>}
+                {!k.revoked && (
+                  <div className="flex gap-4">
+                    <button onClick={() => rotateKey(k.name)} style={{ fontFamily: GOTHIC, fontSize: 10, fontWeight: 900, letterSpacing: 1, color: ACCENT, background: "none", border: "none", cursor: "pointer" }}>ROTATE</button>
+                    <button onClick={() => revokeKey(k.name)} style={{ fontFamily: GOTHIC, fontSize: 10, fontWeight: 900, letterSpacing: 1, color: C.red, background: "none", border: "none", cursor: "pointer" }}>REVOKE</button>
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -874,7 +926,7 @@ export function TransitSignPanel({ user, addToast, showCrit }: { user: User; add
               {keys.map((k) => <option key={k.name} value={k.name}>{k.name}</option>)}
             </select>
             <VTextarea label="Original Message" value={message} onChange={setMessage} placeholder="The original message..." accent={ACCENT} />
-            <VTextarea label="Signature" value={sig} onChange={setSig} placeholder="v1:signature:..." accent={ACCENT} />
+            <VTextarea label="Signature" value={sig} onChange={setSig} placeholder="signature:..." accent={ACCENT} />
             <HoverBtn bg={ACCENT} color="#fff" onClick={doVerify} fullWidth>VERIFY SIGNATURE</HoverBtn>
             {verifyResult !== null && (
               <div style={{ marginTop: 32, border: `2px solid ${verifyResult ? C.green : C.red}`, padding: 24, backgroundColor: C.surface }}>
@@ -922,7 +974,7 @@ export function AuditPanel() {
             <div key={i} className="grid px-8 py-3" style={{ gridTemplateColumns: "200px 1fr 1fr 1fr 80px", borderBottom: `1px solid ${C.border}`, backgroundColor: i % 2 === 0 ? C.surface : C.surfaceAlt }}
               onMouseEnter={(e) => e.currentTarget.style.backgroundColor = C.appBg}
               onMouseLeave={(e) => e.currentTarget.style.backgroundColor = i % 2 === 0 ? C.surface : C.surfaceAlt}>
-              <span style={{ fontFamily: "monospace", fontSize: 11, color: C.subdued }}>{row.timestamp}</span>
+              <span style={{ fontFamily: "monospace", fontSize: 11, color: C.subdued }}>{new Date(parseFloat(row.timestamp) * 1000).toLocaleString()}</span>
               <span style={{ fontFamily: GOTHIC, fontSize: 12, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.actor_email}</span>
               <span style={{ fontFamily: GOTHIC, fontSize: 11, color: C.subdued, letterSpacing: 1 }}>{row.action}</span>
               <span style={{ fontFamily: GOTHIC, fontSize: 11, color: C.subdued, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.resource}</span>

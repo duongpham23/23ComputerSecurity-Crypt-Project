@@ -187,3 +187,12 @@ export async function decrypt(
     key_name: keyName,
   };
 }
+
+/**
+ * POST /transit/keys/{name}/rotate
+ *
+ * Rotates the specified encryption key.
+ */
+export async function rotateEncryptKey(name: string): Promise<void> {
+  await apiFetch(`/transit/keys/${encodeURIComponent(name)}/rotate`, { method: "POST" });
+}

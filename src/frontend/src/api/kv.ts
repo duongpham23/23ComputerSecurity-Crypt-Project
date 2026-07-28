@@ -42,6 +42,7 @@ export interface SecretListItem {
   /** Path only — values are never included in list responses. */
   path: string;
   updated_at: string;
+  is_shared?: boolean;
 }
 
 export interface SecretListResponse {
@@ -125,4 +126,15 @@ export async function readSecret(path: string): Promise<SecretResource> {
  */
 export async function deleteSecret(path: string): Promise<void> {
   await apiFetch(`/kv/delete?path=${encodeURIComponent(path)}`, { method: "DELETE" });
+}
+
+/**
+ * GET /kv/version/{version}?path={path}
+ *
+ * Returns the decrypted secret at the given path for a specific version.
+ */
+export async function readSecretVersion(path: string, version: number): Promise<SecretResource> {
+  // @ts-ignore
+  const resp = await apiFetch<any>(`/kv/version/${version}?path=${encodeURIComponent(path)}`);
+  return { path, value: resp.data, updated_at: "" };
 }
