@@ -45,9 +45,11 @@ export function DashboardLayout() {
         className="flex-shrink-0 flex items-center px-8 gap-6"
         style={{ height: 64, backgroundColor: C.surface, borderBottom: `2px solid #000` }}
       >
-        <span style={{ fontFamily: GOTHIC, fontSize: 11, fontWeight: 900, letterSpacing: 4, color: C.red }}>
-          MINI VAULT
-        </span>
+        <div className="flex items-center gap-4">
+          <span style={{ fontFamily: GOTHIC, fontSize: 11, fontWeight: 900, letterSpacing: 4, color: C.red }}>
+            MINI VAULT
+          </span>
+        </div>
         <div style={{ width: 1, height: 20, backgroundColor: C.border }} />
         <span style={{ fontFamily: GOTHIC, fontSize: 11, letterSpacing: 2, color: C.subdued }}>
           {user?.email}
