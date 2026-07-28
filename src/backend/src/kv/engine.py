@@ -319,8 +319,8 @@ def list_secrets(token: str) -> list[dict]:
     conn = get_db()
     rows = conn.execute(
         """
-        SELECT path, updated_at, 0 AS is_shared 
-        FROM kv_secrets 
+        SELECT path, updated_at, 0 AS is_shared
+        FROM kv_secrets
         WHERE owner_email = ?
         UNION
         SELECT k.path, k.updated_at, 1 AS is_shared
