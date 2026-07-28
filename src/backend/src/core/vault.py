@@ -40,9 +40,7 @@ class WeakPassphrase(Exception):
 # Passphrase strength requirements (Fix 7)
 # Must have: >= 12 chars, 1 uppercase, 1 lowercase, 1 digit, 1 symbol.
 # ---------------------------------------------------------------------------
-_MASTER_PASSPHRASE_PATTERN = re.compile(
-    r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^a-zA-Z\d]).{12,}$'
-)
+_MASTER_PASSPHRASE_PATTERN = re.compile(r"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^a-zA-Z\d]).{12,}$")
 
 
 # ---------------------------------------------------------------------------

@@ -27,9 +27,7 @@ MIN_PASSPHRASE_LENGTH = 12  # minimum passphrase length
 
 # Passphrase complexity pattern (Fix 7):
 # >= 12 chars, at least one of each: uppercase, lowercase, digit, symbol.
-_PASSPHRASE_PATTERN = re.compile(
-    r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^a-zA-Z\d]).{12,}$'
-)
+_PASSPHRASE_PATTERN = re.compile(r"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^a-zA-Z\d]).{12,}$")
 
 
 def _is_strong_passphrase(passphrase: str) -> bool:

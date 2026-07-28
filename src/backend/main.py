@@ -18,7 +18,6 @@ from src.auth.session import (
     AccountLocked,
     RegistrationError,
     Unauthenticated,
-    verify_token,
 )
 from src.auth.session import (
     login as auth_login,
@@ -29,11 +28,18 @@ from src.auth.session import (
 from src.auth.session import (
     register as auth_register,
 )
-from src.core.vault import VaultLocked, WeakPassphrase, init_vault, is_initialized, is_unlocked, unlock_vault
-from src.storage.db import get_db, init_db
+from src.core.vault import (
+    VaultLocked,
+    WeakPassphrase,
+    init_vault,
+    is_initialized,
+    is_unlocked,
+    unlock_vault,
+)
 from src.kv import engine as kv_engine
 from src.kv import versioning as kv_versioning
 from src.kv.engine import NotFound, PermissionDenied, TagMismatch
+from src.storage.db import get_db, init_db
 from src.transit import acl as vault_acl
 from src.transit import crypto as transit_crypto
 from src.transit import keys as transit_keys
@@ -150,6 +156,7 @@ def post_vault_unlock(req: VaultPassphraseRequest):
 def post_vault_lock():
     try:
         from src.core.vault import lock_vault
+
         lock_vault()
         return {"status": "success"}
     except Exception as e:
