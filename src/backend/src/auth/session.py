@@ -156,12 +156,13 @@ def login(email: str, passphrase: str) -> dict:
             )
             conn.commit()
             from src.storage.audit import log_action
+
             log_action(
                 action="ACCOUNT_LOCKED",
                 actor_email=email,
                 resource="auth.login",
                 detail={"failed_attempts": new_attempts, "locked_until": lock_until},
-                result="DENIED"
+                result="DENIED",
             )
             raise AccountLocked(lock_until=lock_until)
         else:

@@ -288,15 +288,16 @@ def delete(path: str, token: str) -> dict:
 
     conn.execute("DELETE FROM kv_secrets WHERE path = ?", (path,))
     conn.commit()
-    
+
     from src.storage.audit import log_action
+
     log_action(
         action="KV_DELETE",
         actor_email=caller_email,
         resource=path,
         detail={},
     )
-    
+
     return {"deleted": True, "path": path}
 
 
@@ -331,4 +332,7 @@ def list_secrets(token: str) -> list[dict]:
         (caller_email, caller_email),
     ).fetchall()
 
-    return [{"path": r["path"], "updated_at": r["updated_at"], "is_shared": bool(r["is_shared"])} for r in rows]
+    return [
+        {"path": r["path"], "updated_at": r["updated_at"], "is_shared": bool(r["is_shared"])}
+        for r in rows
+    ]
