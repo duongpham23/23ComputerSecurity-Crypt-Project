@@ -668,7 +668,7 @@ export function KVPanel({ user, addToast, showCrit }: { user: User; addToast: (m
                 <div style={{ width: 4, height: 4, backgroundColor: C.red, flexShrink: 0 }} />
                 <p style={{ fontFamily: GOTHIC, fontSize: 13, fontWeight: 700, color: C.text }}>{e.path}</p>
               </div>
-              <p style={{ fontFamily: GOTHIC, fontSize: 11, color: C.subdued, paddingLeft: 12 }}>{new Date(e.ts).toLocaleString()}</p>
+              <p style={{ fontFamily: GOTHIC, fontSize: 11, color: C.subdued, paddingLeft: 12 }}>{new Date(parseFloat(e.ts as any) * 1000).toLocaleString()}</p>
             </div>
           ))}
           <p style={{ fontFamily: GOTHIC, fontSize: 10, fontWeight: 900, letterSpacing: 2, color: C.subdued, marginBottom: 16, marginTop: 24 }}>SHARED WITH ME ({entries.filter(e => e.is_shared).length})</p>
@@ -681,7 +681,7 @@ export function KVPanel({ user, addToast, showCrit }: { user: User; addToast: (m
                 <div style={{ width: 4, height: 4, backgroundColor: C.blue, flexShrink: 0 }} />
                 <p style={{ fontFamily: GOTHIC, fontSize: 13, fontWeight: 700, color: C.text }}>{e.path}</p>
               </div>
-              <p style={{ fontFamily: GOTHIC, fontSize: 11, color: C.subdued, paddingLeft: 12 }}>{new Date(e.ts).toLocaleString()}</p>
+              <p style={{ fontFamily: GOTHIC, fontSize: 11, color: C.subdued, paddingLeft: 12 }}>{new Date(parseFloat(e.ts as any) * 1000).toLocaleString()}</p>
             </div>
           ))}
           {entries.length === 0 && (
