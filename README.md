@@ -28,9 +28,6 @@ docker compose up --build
 
 or just run **run_docker.bat**.
 
-- **Frontend Dashboard:** `http://localhost:5173`
-- **Backend API:** `http://localhost:8000`
-
 ### Local Development (Without Docker)
 
 If you prefer running the services locally:
@@ -50,6 +47,12 @@ cd src/frontend
 npm install
 npm run dev
 ```
+
+## Important Domains:
+
+- [Client Dashboard](http://localhost:5173/): Authentication, KV Engine, Transit
+- [Admin Dashboard](http://localhost:5173/admin): Initialize Vault, Enter passphrase, view Audit Log
+- [Backend API](http://localhost:8000/docs): API Documentation
 
 ## Running Tests (Backend)
 

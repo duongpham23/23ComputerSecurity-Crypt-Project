@@ -8,10 +8,11 @@
 - Feature 0.2 — Authentication (Register / Login / Sessions)
 - Feature 1 — KV Engine (Encrypted-at-Rest Storage)
 - Feature 2 — Transit Engine (Named Keys, Encrypt/Decrypt, Signing)
-- Tamper-Evident Audit Log
-- Operational Notes
-- API Reference (selected endpoints & examples)
-- Tests and Acceptance Criteria (how to run)
+- Extra Credit Feature
+  - KV Versioning
+  - Tamper-Evident Audit Log
+  - Key Rotation/Versioning
+  - ACL / Policy-based Sharing
 - References
 
 ---
@@ -124,7 +125,9 @@ Namespace isolation is strictly enforced at the database query level. Every secr
 **Mechanism**:
 When an administrator creates a named key, the system generates a raw 256-bit AES backing key (`key_material`) using `os.urandom(32)`. To protect this key at rest, the system encrypts the `key_material` itself using the Vault's central DEK via AES-GCM (generating a specific `wrap_nonce`). The encrypted key material, wrap nonce, and metadata (`key_name`, `owner_email`, `key_version`) are stored in the database.
 
-When listing keys, the API only returns metadata and never exposes the plaintext key material. Revocation acts as a soft-delete mechanism: it marks a named key as `revoked` in metadata so it can no longer be used for new cryptographic operations, but preserves the record for auditability.
+When listing keys, the API only returns metadata and never exposes the plaintext key material.
+
+Revocation acts as a hard-delete mechanism: When user revoke a key, the system will delete the key from the database so it cannot be used for new cryptographic operations. This design prevents errors (unique key names constraint of the DB) if the user wants to create a new key which has the same name as the revoked ones.
 
 #### Encrypt / Decrypt API and Ciphertext Format
 
@@ -161,7 +164,9 @@ Whenever a security-critical event occurs (e.g., Vault unlocks, secret deletions
 **Mechanism**:
 Cryptographic hygiene dictates that encryption keys must not be used indefinitely. When an administrator rotates a Transit Key, the system generates a fresh 256-bit AES backing key. This new key is wrapped with the DEK and inserted into the database under the same `key_name` but with an incremented `key_version` integer.
 
-The system marks this new key as the active key for all future encryption operations. Because the Vault explicitly encodes the key version into the returned ciphertext string (`vault:vX:...`), older ciphertexts remain perfectly decryptable since the Vault automatically identifies and fetches the correct historical key version.
+Because the Vault explicitly encodes the key version into the returned ciphertext string (`vault:vX:...`), older ciphertexts remain perfectly decryptable since the Vault automatically identifies and fetches the correct historical key version.
+
+When revoking a version of a key, the other versions remain untouched.
 
 ### ACL / Policy-based Sharing
 
