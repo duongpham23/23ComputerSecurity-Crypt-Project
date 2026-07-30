@@ -44,7 +44,7 @@ def init_db() -> None:
     conn.executescript(
         """
         -- ----------------------------------------------------------------
-        -- Feature 0 (Teammate)
+        -- Feature 0
         -- ----------------------------------------------------------------
         CREATE TABLE IF NOT EXISTS users (
             email           TEXT PRIMARY KEY,
@@ -62,7 +62,7 @@ def init_db() -> None:
         );
 
         -- ----------------------------------------------------------------
-        -- Feature 1 — KV Engine (YOU)
+        -- Feature 1 — KV Engine
         -- ----------------------------------------------------------------
         CREATE TABLE IF NOT EXISTS kv_secrets (
             path            TEXT PRIMARY KEY,
@@ -76,7 +76,7 @@ def init_db() -> None:
             FOREIGN KEY (owner_email) REFERENCES users(email)
         );
 
-        -- [EXTRA] KV version history
+        -- KV version history
         CREATE TABLE IF NOT EXISTS kv_versions (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
             path            TEXT NOT NULL,
@@ -89,7 +89,7 @@ def init_db() -> None:
         );
 
         -- ----------------------------------------------------------------
-        -- Feature 2 — Transit Engine (YOU)
+        -- Feature 2 — Transit Engine
         -- ----------------------------------------------------------------
         CREATE TABLE IF NOT EXISTS transit_keys (
             key_name                    TEXT NOT NULL,
@@ -120,7 +120,7 @@ def init_db() -> None:
             FOREIGN KEY (grantee_email) REFERENCES users(email)
         );
 
-        -- [EXTRA] Tamper-evident audit log (hash-chained)
+        -- Tamper-evident audit log (hash-chained)
         CREATE TABLE IF NOT EXISTS audit_log (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
             timestamp   REAL    NOT NULL,

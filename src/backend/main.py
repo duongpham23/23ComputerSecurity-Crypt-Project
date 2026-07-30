@@ -331,9 +331,9 @@ def transit_rotate_key(key_name: str, token: str = Depends(get_token)):
 
 
 @router.delete("/transit/keys/{key_name}")
-def transit_revoke_key(key_name: str, token: str = Depends(get_token)):
+def transit_revoke_key(key_name: str, version: int | None = None, token: str = Depends(get_token)):
     try:
-        transit_keys.revoke_key(key_name, token)
+        transit_keys.revoke_key(key_name, token, version=version)
         return {"status": "success"}
     except Exception as e:
         handle_transit_exceptions(e)

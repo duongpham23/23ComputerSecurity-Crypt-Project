@@ -83,9 +83,8 @@ export async function listEncryptKeys(): Promise<EncKeyListResponse> {
       name: k.key_name,
       algorithm: "AES-256-GCM",
       version: k.key_version,
-      revoked: false, // Backend list_keys only returns active keys
-      created_at: new Date(k.created_at * 1000).toISOString()
-    }))
+      created_at: new Date(k.created_at * 1000).toISOString(),
+    })),
   };
 }
 
@@ -126,8 +125,14 @@ export async function getEncryptKey(name: string): Promise<EncKeyResponse> {
  *
  * @throws {ApiError} NOT_FOUND (404) | PERMISSION_DENIED (403)
  */
-export async function revokeEncryptKey(name: string): Promise<void> {
-  await apiFetch(`/transit/keys/${encodeURIComponent(name)}`, { method: "DELETE" });
+export async function revokeEncryptKey(
+  name: string,
+  version?: number,
+): Promise<void> {
+  const q = version !== undefined ? `?version=${version}` : "";
+  await apiFetch(`/transit/keys/${encodeURIComponent(name)}${q}`, {
+    method: "DELETE",
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -194,5 +199,7 @@ export async function decrypt(
  * Rotates the specified encryption key.
  */
 export async function rotateEncryptKey(name: string): Promise<void> {
-  await apiFetch(`/transit/keys/${encodeURIComponent(name)}/rotate`, { method: "POST" });
+  await apiFetch(`/transit/keys/${encodeURIComponent(name)}/rotate`, {
+    method: "POST",
+  });
 }

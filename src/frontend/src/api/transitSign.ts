@@ -82,9 +82,8 @@ export async function listSignKeys(): Promise<SignKeyListResponse> {
       name: k.key_name,
       algorithm: k.signing_algorithm,
       version: k.key_version,
-      revoked: false, // Backend list_keys only returns active keys
-      created_at: new Date(k.created_at * 1000).toISOString()
-    }))
+      created_at: new Date(k.created_at * 1000).toISOString(),
+    })),
   };
 }
 
@@ -125,8 +124,14 @@ export async function getSignKey(name: string): Promise<SignKeyResponse> {
  *
  * @throws {ApiError} NOT_FOUND (404) | PERMISSION_DENIED (403)
  */
-export async function revokeSignKey(name: string): Promise<void> {
-  await apiFetch(`/transit/keys/${encodeURIComponent(name)}`, { method: "DELETE" });
+export async function revokeSignKey(
+  name: string,
+  version?: number,
+): Promise<void> {
+  const q = version !== undefined ? `?version=${version}` : "";
+  await apiFetch(`/transit/keys/${encodeURIComponent(name)}${q}`, {
+    method: "DELETE",
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -150,7 +155,11 @@ export async function signMessage(
   // @ts-ignore
   const resp = await apiFetch<any>(`/transit/sign`, {
     method: "POST",
-    body: { key_name: keyName, message_b64: btoa(message), message_type: "RAW" },
+    body: {
+      key_name: keyName,
+      message_b64: btoa(message),
+      message_type: "RAW",
+    },
   });
   return {
     signature: resp.data.signature_b64,
@@ -180,7 +189,12 @@ export async function verifySignature(
   // @ts-ignore
   const resp = await apiFetch<any>(`/transit/verify`, {
     method: "POST",
-    body: { key_name: keyName, message_b64: btoa(message), message_type: "RAW", signature_b64: signature },
+    body: {
+      key_name: keyName,
+      message_b64: btoa(message),
+      message_type: "RAW",
+      signature_b64: signature,
+    },
   });
   return {
     signature_valid: resp.data.signature_valid,

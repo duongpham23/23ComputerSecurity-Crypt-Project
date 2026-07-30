@@ -287,9 +287,10 @@ def list_keys(token: str, usage: str | None = None) -> list[dict]:
     ]
 
 
-def revoke_key(key_name: str, token: str) -> dict:
+def revoke_key(key_name: str, token: str, version: int | None = None) -> dict:
     """
-    Permanently revoke (soft-delete) a named key.
+    Permanently revoke (hard-delete) a named key.
+    If version is provided, deletes only that version. Otherwise, deletes all versions.
 
     Returns:
         {"revoked": True, "key_name": str}
@@ -303,11 +304,14 @@ def revoke_key(key_name: str, token: str) -> dict:
     _check_key_ownership(key_name, caller_email)
 
     conn = get_db()
-    conn.execute(
-        """UPDATE transit_keys SET is_active = 0
-           WHERE key_name = ? AND owner_email = ?""",
-        (key_name, caller_email),
-    )
+    query = "DELETE FROM transit_keys WHERE key_name = ? AND owner_email = ?"
+    params = [key_name, caller_email]
+
+    if version is not None:
+        query += " AND key_version = ?"
+        params.append(version)
+
+    conn.execute(query, tuple(params))
     conn.commit()
 
     from src.storage.audit import log_action
@@ -316,7 +320,7 @@ def revoke_key(key_name: str, token: str) -> dict:
         action="REVOKE_KEY",
         actor_email=caller_email,
         resource=key_name,
-        detail={},
+        detail={"version": version} if version is not None else {},
     )
 
     return {"revoked": True, "key_name": key_name}

@@ -6,7 +6,7 @@ import pytest
 
 from src.core.vault import VaultLocked
 from src.transit.crypto import decrypt, encrypt
-from src.transit.keys import InvalidKeyUsage, KeyAlreadyExists, KeyNotFound, create_key, revoke_key
+from src.transit.keys import InvalidKeyUsage, KeyAlreadyExists, create_key, revoke_key
 from src.transit.signing import (
     create_signing_key,
     sign,
@@ -33,10 +33,11 @@ class TestTransitKeyManagement:
             create_key("dup-key", alice_token)
 
     def test_revoke_key_then_encrypt_fails(self, unlocked_vault, alice_token):
-        """2.1 — encrypting with a revoked key must raise KeyNotFound."""
+        """2.1 — encrypting with a revoked key must raise PermissionDenied since it is fully wiped."""
         create_key("revoke-me", alice_token)
         revoke_key("revoke-me", alice_token)
-        with pytest.raises(KeyNotFound):
+        from src.kv.engine import PermissionDenied
+        with pytest.raises(PermissionDenied):
             encrypt("revoke-me", base64.b64encode(b"hello").decode(), alice_token)
 
 
