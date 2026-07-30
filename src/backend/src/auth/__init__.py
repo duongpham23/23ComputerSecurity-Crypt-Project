@@ -1,0 +1,3 @@
+"""
+Auth package init.
+"""

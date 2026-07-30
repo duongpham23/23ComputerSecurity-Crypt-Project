@@ -1,0 +1,21 @@
+data/
+.env
+*.db
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.zip
+
+# Node.js
+node_modules/
+dist/
+dist-ssr/
+*.local
+.npm/
+
+# IDE / OS
+.DS_Store
+.vscode/
+.idea/

@@ -42,6 +42,7 @@ export interface SecretListItem {
   /** Path only — values are never included in list responses. */
   path: string;
   updated_at: string;
+  is_shared?: boolean;
 }
 
 export interface SecretListResponse {
@@ -77,7 +78,7 @@ function secretUrl(path: string): string {
  * Values are never included — use `readSecret` to fetch a specific value.
  */
 export async function listSecrets(): Promise<SecretListResponse> {
-  return apiFetch<SecretListResponse>("/secrets");
+  return apiFetch<SecretListResponse>("/kv/list");
 }
 
 /**
@@ -93,10 +94,12 @@ export async function writeSecret(
   path: string,
   value: Record<string, unknown>,
 ): Promise<SecretWriteResponse> {
-  return apiFetch<SecretWriteResponse>(secretUrl(path), {
-    method: "PUT",
-    body: { value },
+  // @ts-ignore - mapping the backend response format
+  const resp = await apiFetch<any>("/kv/write", {
+    method: "POST",
+    body: { path, data: value },
   });
+  return resp.metadata;
 }
 
 /**
@@ -108,7 +111,9 @@ export async function writeSecret(
  * @throws {ApiError} PERMISSION_DENIED (403) if the path is outside the caller's namespace.
  */
 export async function readSecret(path: string): Promise<SecretResource> {
-  return apiFetch<SecretResource>(secretUrl(path));
+  // @ts-ignore - mapping the backend response format
+  const resp = await apiFetch<any>(`/kv/read?path=${encodeURIComponent(path)}`);
+  return { path, value: resp.data, updated_at: "" };
 }
 
 /**
@@ -120,5 +125,16 @@ export async function readSecret(path: string): Promise<SecretResource> {
  * @throws {ApiError} PERMISSION_DENIED (403) for cross-namespace access.
  */
 export async function deleteSecret(path: string): Promise<void> {
-  await apiFetch(secretUrl(path), { method: "DELETE" });
+  await apiFetch(`/kv/delete?path=${encodeURIComponent(path)}`, { method: "DELETE" });
+}
+
+/**
+ * GET /kv/version/{version}?path={path}
+ *
+ * Returns the decrypted secret at the given path for a specific version.
+ */
+export async function readSecretVersion(path: string, version: number): Promise<SecretResource> {
+  // @ts-ignore
+  const resp = await apiFetch<any>(`/kv/version/${version}?path=${encodeURIComponent(path)}`);
+  return { path, value: resp.data, updated_at: "" };
 }

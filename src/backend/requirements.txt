@@ -1,0 +1,10 @@
+fastapi>=0.115
+uvicorn[standard]
+cryptography>=43
+argon2-cffi
+bcrypt
+python-dotenv
+pyotp
+setuptools>=83.0.0
+pytest
+httpx

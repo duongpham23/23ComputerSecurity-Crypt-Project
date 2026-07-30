@@ -29,7 +29,6 @@ export function AdminPassphrasePage() {
       .catch(() => setVaultState("locked"));
   }, []);
 
-  return <Navigate to="/admin/audit" replace />
   if (vaultState === "loading") return null;
   if (vaultState === "open") return <Navigate to="/admin/audit" replace />;
 

@@ -77,7 +77,15 @@ function keyUrl(name: string): string {
  * Lists all AES encryption keys owned by the caller (including revoked ones).
  */
 export async function listEncryptKeys(): Promise<EncKeyListResponse> {
-  return apiFetch<EncKeyListResponse>("/transit/encrypt-keys");
+  const resp = await apiFetch<any>("/transit/keys");
+  return {
+    keys: (resp.keys || []).map((k: any) => ({
+      name: k.key_name,
+      algorithm: "AES-256-GCM",
+      version: k.key_version,
+      created_at: new Date(k.created_at * 1000).toISOString(),
+    })),
+  };
 }
 
 /**
@@ -92,10 +100,12 @@ export async function createEncryptKey(
   name: string,
   algorithm: EncAlgorithm = "AES-256-GCM",
 ): Promise<EncKeyResponse> {
-  return apiFetch<EncKeyResponse>("/transit/encrypt-keys", {
+  // @ts-ignore
+  const resp = await apiFetch<any>("/transit/keys", {
     method: "POST",
-    body: { name, algorithm },
+    body: { key_name: name }, // Backend ignores algorithm for AES keys, it's hardcoded to AES-256-GCM
   });
+  return { key: resp.data };
 }
 
 /**
@@ -104,7 +114,7 @@ export async function createEncryptKey(
  * Returns metadata for a single encryption key (never the key material).
  */
 export async function getEncryptKey(name: string): Promise<EncKeyResponse> {
-  return apiFetch<EncKeyResponse>(keyUrl(name));
+  throw new Error("getEncryptKey not implemented in backend");
 }
 
 /**
@@ -115,8 +125,14 @@ export async function getEncryptKey(name: string): Promise<EncKeyResponse> {
  *
  * @throws {ApiError} NOT_FOUND (404) | PERMISSION_DENIED (403)
  */
-export async function revokeEncryptKey(name: string): Promise<void> {
-  await apiFetch(keyUrl(name), { method: "DELETE" });
+export async function revokeEncryptKey(
+  name: string,
+  version?: number,
+): Promise<void> {
+  const q = version !== undefined ? `?version=${version}` : "";
+  await apiFetch(`/transit/keys/${encodeURIComponent(name)}${q}`, {
+    method: "DELETE",
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -138,10 +154,16 @@ export async function encrypt(
   keyName: string,
   plaintext: string,
 ): Promise<EncryptResponse> {
-  return apiFetch<EncryptResponse>(`${keyUrl(keyName)}/encrypt`, {
+  // @ts-ignore
+  const resp = await apiFetch<any>(`/transit/encrypt`, {
     method: "POST",
-    body: { plaintext },
+    body: { key_name: keyName, plaintext_b64: plaintext },
   });
+  return {
+    ciphertext: resp.ciphertext,
+    key_name: keyName,
+    key_version: 1, // Optional mock, backend ciphertext embeds the version
+  };
 }
 
 /**
@@ -160,8 +182,24 @@ export async function decrypt(
   keyName: string,
   ciphertext: string,
 ): Promise<DecryptResponse> {
-  return apiFetch<DecryptResponse>(`${keyUrl(keyName)}/decrypt`, {
+  // @ts-ignore
+  const resp = await apiFetch<any>(`/transit/decrypt`, {
     method: "POST",
     body: { ciphertext },
+  });
+  return {
+    plaintext: resp.plaintext_b64,
+    key_name: keyName,
+  };
+}
+
+/**
+ * POST /transit/keys/{name}/rotate
+ *
+ * Rotates the specified encryption key.
+ */
+export async function rotateEncryptKey(name: string): Promise<void> {
+  await apiFetch(`/transit/keys/${encodeURIComponent(name)}/rotate`, {
+    method: "POST",
   });
 }

@@ -75,8 +75,9 @@ services:
     volumes:
       # Mount source for --reload to pick up changes without rebuilding.
       - .:/app
-      # Persist on-disk vault data across container restarts.
-      - vault-data:/app/data
+      # Persist on-disk vault data — bind-mounted to ./data on the host
+      # so the .db file is directly accessible on Windows.
+      - ./data:/app/data
 
     healthcheck:
       test:
@@ -90,6 +91,4 @@ services:
       start_period: 15s
       retries: 3
 
-volumes:
-  vault-data:
-    driver: local
+# (named volume removed — data is now in ./data/ on the host)
