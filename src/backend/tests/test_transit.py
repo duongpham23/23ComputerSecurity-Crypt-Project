@@ -37,6 +37,7 @@ class TestTransitKeyManagement:
         create_key("revoke-me", alice_token)
         revoke_key("revoke-me", alice_token)
         from src.kv.engine import PermissionDenied
+
         with pytest.raises(PermissionDenied):
             encrypt("revoke-me", base64.b64encode(b"hello").decode(), alice_token)
 
