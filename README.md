@@ -48,11 +48,13 @@ npm install
 npm run dev
 ```
 
-## Important Domains:
+## Important Notes:
 
-- [Client Dashboard](http://localhost:5173/): Authentication, KV Engine, Transit
-- [Admin Dashboard](http://localhost:5173/admin): Initialize Vault, Enter passphrase, view Audit Log
-- [Backend API](http://localhost:8000/docs): API Documentation
+- **http://localhost:5173/**: Login/Register, KV Engine, Transit
+- **http://localhost:5173/admin**: Initialize Vault, Unlock vault, Enter passphrase, View Audit Log, Lock vault
+- **http://localhost:8000/docs**: API Documentation
+
+- To view the content of the DB, use [DB Browser for SQLite](https://sqlitebrowser.org/) or VS Code extension **SQLite Viewer** to open the DB file. The DB file is located at `data/minivault.db`
 
 ## Running Tests (Backend)
 
